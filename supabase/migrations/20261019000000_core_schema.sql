@@ -1,14 +1,24 @@
 -- =============================================================================
--- core_schema (v1) — reviewed & hardened. NOT YET APPLIED.
+-- core_schema (v1.1) — reviewed & hardened. NOT YET APPLIED.
 --
 -- Safety properties:
+--   * Runs as ONE explicit transaction (BEGIN ... COMMIT). The Supabase
+--     Management API / MCP apply_migration does not wrap migrations itself,
+--     so any failure — including the final self-verification block — rolls
+--     back everything and leaves the database exactly as it was.
 --   * Pre-flight guard aborts if any target object already exists and was NOT
 --     created by this migration (marker comment 'app:core_schema_v1').
 --   * No DROP of tables/columns/functions. Only DROP POLICY IF EXISTS on
 --     policies this migration owns (guarded tables), so reruns converge.
 --   * Every CREATE is IF NOT EXISTS / OR REPLACE -> safe to retry.
+--   * Must run as role "postgres" so SECURITY DEFINER functions have a known,
+--     non-client owner.
 --   * Requires Postgres 15+ (composite FK "ON DELETE SET NULL (col)").
 -- =============================================================================
+
+begin;
+set local lock_timeout = '10s';
+set local statement_timeout = '120s';
 
 -- -----------------------------------------------------------------------------
 -- 0. PRE-FLIGHT GUARD
@@ -21,15 +31,20 @@ declare
     'resumes','resume_versions','job_listings','saved_jobs','job_matches',
     'cover_letters','applications','application_events','screening_answers',
     'email_connections','recruiter_messages','subscriptions','credit_accounts',
-    'credit_transactions','notifications','ai_generation_logs'];
+    'credit_transactions','notifications','ai_generation_logs',
+    'billing_customers','stripe_events'];
   v_functions constant text[] := array[
     'set_updated_at','handle_new_user','handle_user_email_change',
-    'guard_application_server_fields','forbid_ledger_update',
-    'spend_credits','grant_credits'];
+    'guard_application_server_fields','invalidate_application_approval',
+    'forbid_ledger_update','spend_credits','grant_credits'];
   r record;
 begin
   if current_setting('server_version_num')::int < 150000 then
     raise exception 'core_schema requires Postgres 15+';
+  end if;
+
+  if current_user <> 'postgres' then
+    raise exception 'core_schema must run as role postgres (current: %)', current_user;
   end if;
 
   for r in
@@ -320,6 +335,7 @@ create table if not exists public.applications (
   industry            text check (char_length(industry) <= 120),
   status              text not null default 'saved' check (status in ('saved','prepared','applied','awaiting_response','interview','offer','rejected','withdrawn')),
   prep_state          text not null default 'draft' check (prep_state in ('draft','ready_for_review','approved','submitting','submitted','failed','needs_manual_action')),
+  approved_at         timestamptz,
   resume_version_id   uuid,
   cover_letter_id     uuid,
   submitted_at        timestamptz,
@@ -331,6 +347,14 @@ create table if not exists public.applications (
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   unique (id, user_id),
+  -- 'submitted' is only reachable with real adapter evidence (no simulated success)
+  constraint applications_submitted_has_evidence check (
+    prep_state <> 'submitted'
+    or (submission_method = 'adapter' and submitted_at is not null and submission_evidence is not null)),
+  constraint applications_manual_has_timestamp check (
+    submission_method is distinct from 'manual' or submitted_at is not null),
+  constraint applications_approval_timestamped check (
+    prep_state not in ('approved','submitting','submitted') or approved_at is not null),
   -- composite FKs: referenced resume version / letter MUST belong to same user
   foreign key (resume_version_id, user_id) references public.resume_versions(id, user_id) on delete set null (resume_version_id),
   foreign key (cover_letter_id, user_id)   references public.cover_letters(id, user_id)   on delete set null (cover_letter_id)
@@ -341,17 +365,46 @@ create index if not exists applications_job_idx on public.applications(job_id);
 create or replace trigger applications_updated before update on public.applications
   for each row execute function public.set_updated_at();
 
--- Clients may NOT self-report automated submissions. Adapter results,
--- 'submitting'/'submitted' states and evidence are written server-side only.
+-- Part 1 (ALL roles, incl. service_role): submission state machine
+--   approved -> submitting -> submitted | failed | needs_manual_action
+--   'submitted' is terminal; approval is timestamped by the database.
+-- Part 2 (clients only): adapter results, 'submitting'/'submitted'/'failed'
+--   and evidence are server-managed; material edits revoke approval.
 create or replace function public.guard_application_server_fields()
 returns trigger language plpgsql security invoker set search_path = '' as $$
+declare
+  v_is_client constant boolean := current_user in ('authenticated', 'anon');
 begin
-  if current_user not in ('authenticated', 'anon') then
+  if tg_op = 'INSERT' and new.prep_state in ('submitting','submitted') then
+    raise exception 'applications cannot be created in state %', new.prep_state using errcode = '42501';
+  end if;
+
+  if tg_op = 'UPDATE' and new.prep_state is distinct from old.prep_state then
+    if old.prep_state = 'submitted' then
+      raise exception 'submitted is a terminal state' using errcode = '42501';
+    end if;
+    if new.prep_state = 'submitting' and old.prep_state <> 'approved' then
+      raise exception 'submission requires explicit user approval' using errcode = '42501';
+    end if;
+    if new.prep_state = 'submitted' and old.prep_state <> 'submitting' then
+      raise exception 'submitted must follow submitting' using errcode = '42501';
+    end if;
+  end if;
+
+  if new.prep_state = 'approved' and (tg_op = 'INSERT' or old.prep_state is distinct from 'approved') then
+    new.approved_at := now();
+  elsif new.prep_state not in ('approved','submitting','submitted') then
+    new.approved_at := null;
+  elsif tg_op = 'UPDATE' then
+    new.approved_at := old.approved_at;
+  end if;
+
+  if not v_is_client then
     return new;
   end if;
 
   if tg_op = 'INSERT' then
-    if new.prep_state in ('submitting','submitted','failed')
+    if new.prep_state in ('approved','failed')
        or new.submission_method = 'adapter'
        or new.submission_evidence is not null then
       raise exception 'submission fields are server-managed' using errcode = '42501';
@@ -359,11 +412,22 @@ begin
     return new;
   end if;
 
-  if old.prep_state in ('submitting','submitted') and new.prep_state is distinct from old.prep_state then
-    raise exception 'submitted applications cannot change prep_state' using errcode = '42501';
+  if old.prep_state in ('submitting','submitted') and (
+       new.prep_state is distinct from old.prep_state
+       or new.resume_version_id is distinct from old.resume_version_id
+       or new.cover_letter_id is distinct from old.cover_letter_id
+       or new.job_url is distinct from old.job_url) then
+    raise exception 'application is locked while submitting/submitted' using errcode = '42501';
   end if;
   if new.prep_state is distinct from old.prep_state and new.prep_state in ('submitting','submitted','failed') then
     raise exception 'prep_state % is server-managed', new.prep_state using errcode = '42501';
+  end if;
+  if old.prep_state = 'approved' and new.prep_state = 'approved' and (
+       new.resume_version_id is distinct from old.resume_version_id
+       or new.cover_letter_id is distinct from old.cover_letter_id
+       or new.job_url is distinct from old.job_url) then
+    new.prep_state := 'ready_for_review';
+    new.approved_at := null;
   end if;
   if new.submission_evidence is distinct from old.submission_evidence then
     raise exception 'submission_evidence is server-managed' using errcode = '42501';
@@ -414,6 +478,38 @@ create index if not exists screening_answers_app_idx on public.screening_answers
 create index if not exists screening_answers_user_idx on public.screening_answers(user_id);
 create or replace trigger screening_answers_updated before update on public.screening_answers
   for each row execute function public.set_updated_at();
+
+-- Changing any screening answer after approval sends the application back to
+-- review; answers of a submitting/submitted application are locked for clients.
+create or replace function public.invalidate_application_approval()
+returns trigger language plpgsql security invoker set search_path = '' as $$
+declare
+  v_app_id uuid;
+  v_state text;
+begin
+  foreach v_app_id in array array_remove(array[
+      case when tg_op <> 'INSERT' then old.application_id end,
+      case when tg_op <> 'DELETE' then new.application_id end], null)
+  loop
+    select a.prep_state into v_state from public.applications a where a.id = v_app_id for update;
+    if not found then
+      continue;
+    end if;
+    if v_state in ('submitting','submitted') and current_user in ('authenticated','anon') then
+      raise exception 'screening answers are locked while submitting/submitted' using errcode = '42501';
+    end if;
+    if v_state = 'approved' then
+      update public.applications set prep_state = 'ready_for_review' where id = v_app_id;
+    end if;
+  end loop;
+  return null;
+end;
+$$;
+comment on function public.invalidate_application_approval() is 'app:core_schema_v1';
+revoke all on function public.invalidate_application_approval() from public, anon, authenticated;
+create or replace trigger screening_answers_invalidate_approval
+  after insert or update or delete on public.screening_answers
+  for each row execute function public.invalidate_application_approval();
 
 -- -----------------------------------------------------------------------------
 -- 6. EMAIL (OAuth tokens are NEVER stored in these client-readable tables)
@@ -467,10 +563,29 @@ create table if not exists public.subscriptions (
   status                 text not null default 'inactive' check (status in ('inactive','incomplete','incomplete_expired','trialing','active','past_due','canceled','unpaid','paused')),
   current_period_end     timestamptz,
   cancel_at_period_end   boolean not null default false,
+  -- Stripe event.created of the last applied event; webhooks ignore older events
+  last_event_at          timestamptz,
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now()
 );
 comment on table public.subscriptions is 'app:core_schema_v1';
+
+-- Server-only: maps Stripe customers to users (webhook -> user resolution).
+create table if not exists public.billing_customers (
+  user_id            uuid primary key references auth.users(id) on delete cascade,
+  stripe_customer_id text not null unique check (stripe_customer_id ~ '^cus_[A-Za-z0-9]+$'),
+  created_at         timestamptz not null default now()
+);
+comment on table public.billing_customers is 'app:core_schema_v1';
+
+-- Server-only: verified webhook event log for de-duplication of redeliveries.
+create table if not exists public.stripe_events (
+  id           text primary key check (id ~ '^evt_[A-Za-z0-9]+$'),
+  type         text not null check (char_length(type) between 1 and 100),
+  received_at  timestamptz not null default now(),
+  processed_at timestamptz
+);
+comment on table public.stripe_events is 'app:core_schema_v1';
 create index if not exists subscriptions_user_idx on public.subscriptions(user_id);
 create unique index if not exists subscriptions_one_live_per_user
   on public.subscriptions(user_id) where status in ('trialing','active','past_due');
@@ -534,6 +649,9 @@ begin
   if p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 200 then
     raise exception 'invalid idempotency key' using errcode = '22023';
   end if;
+  if char_length(p_reference) > 200 then
+    raise exception 'invalid reference' using errcode = '22023';
+  end if;
 
   insert into public.credit_accounts (user_id) values (p_user_id) on conflict (user_id) do nothing;
   -- row lock serializes all spends/grants for this user
@@ -589,6 +707,9 @@ begin
   if p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 200 then
     raise exception 'invalid idempotency key' using errcode = '22023';
   end if;
+  if char_length(p_reference) > 200 then
+    raise exception 'invalid reference' using errcode = '22023';
+  end if;
 
   insert into public.credit_accounts (user_id) values (p_user_id) on conflict (user_id) do nothing;
   select a.balance into v_balance from public.credit_accounts a where a.user_id = p_user_id for update;
@@ -628,7 +749,8 @@ create table if not exists public.notifications (
   type       text not null check (char_length(type) between 1 and 60),
   title      text not null check (char_length(title) between 1 and 200),
   body       text check (char_length(body) <= 2000),
-  link       text check (link is null or link ~ '^/[^/]'),
+  -- same-origin relative paths only; rejects //host and /\host (browser-normalized to //)
+  link       text check (link is null or (link ~ '^/[A-Za-z0-9]' and link !~ '[\\[:cntrl:]]' and char_length(link) <= 500)),
   read_at    timestamptz,
   created_at timestamptz not null default now()
 );
@@ -662,17 +784,22 @@ declare
     'resumes','resume_versions','job_listings','saved_jobs','job_matches',
     'cover_letters','applications','application_events','screening_answers',
     'email_connections','recruiter_messages','subscriptions','credit_accounts',
-    'credit_transactions','notifications','ai_generation_logs'];
+    'credit_transactions','notifications','ai_generation_logs',
+    'billing_customers','stripe_events'];
   read_only_tables constant text[] := array[
     'job_listings','job_matches','email_connections','recruiter_messages',
     'subscriptions','credit_accounts','credit_transactions','ai_generation_logs'];
+  server_only_tables constant text[] := array['billing_customers','stripe_events'];
 begin
   foreach t in array all_tables loop
-    execute format('revoke all on table public.%I from anon', t);
+    execute format('revoke all on table public.%I from public, anon', t);
     execute format('revoke truncate, references, trigger on table public.%I from authenticated', t);
   end loop;
   foreach t in array read_only_tables loop
     execute format('revoke insert, update, delete on table public.%I from authenticated', t);
+  end loop;
+  foreach t in array server_only_tables loop
+    execute format('revoke all on table public.%I from authenticated', t);
   end loop;
 end
 $grants$;
@@ -706,7 +833,8 @@ declare
     'job_matches','email_connections','recruiter_messages','subscriptions',
     'credit_accounts','credit_transactions','ai_generation_logs'];
 begin
-  foreach t in array owner_crud || owner_read || array['profiles','job_listings','application_events','notifications'] loop
+  -- billing_customers / stripe_events: RLS on, no policies => service_role only
+  foreach t in array owner_crud || owner_read || array['profiles','job_listings','application_events','notifications','billing_customers','stripe_events'] loop
     execute format('alter table public.%I enable row level security', t);
   end loop;
 
@@ -808,7 +936,10 @@ create or replace trigger on_auth_user_email_changed after update of email on au
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('resumes', 'resumes', false, 10485760,
         array['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document'])
-on conflict (id) do nothing;
+on conflict (id) do update
+  set public = false,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists resumes_owner_select on storage.objects;
 drop policy if exists resumes_owner_insert on storage.objects;
@@ -825,3 +956,75 @@ create policy resumes_owner_update on storage.objects for update to authenticate
   with check (bucket_id = 'resumes' and (storage.foldername(name))[1] = (select auth.uid())::text);
 create policy resumes_owner_delete on storage.objects for delete to authenticated
   using (bucket_id = 'resumes' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- -----------------------------------------------------------------------------
+-- 13. SELF-VERIFICATION — any violation aborts and rolls back the whole migration
+-- -----------------------------------------------------------------------------
+do $verify$
+declare
+  r record;
+  v_role text;
+begin
+  for r in
+    select p.oid, p.proname, p.prosecdef, pg_get_userbyid(p.proowner) as owner, p.proconfig
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and obj_description(p.oid, 'pg_proc') = 'app:core_schema_v1'
+  loop
+    if r.proconfig is null or not ('search_path=""' = any (r.proconfig)) then
+      raise exception 'verify: public.% has no pinned empty search_path', r.proname;
+    end if;
+    foreach v_role in array array['public','anon','authenticated'] loop
+      if has_function_privilege(v_role, r.oid, 'execute') then
+        raise exception 'verify: % can execute public.%', v_role, r.proname;
+      end if;
+    end loop;
+    if r.prosecdef and r.owner <> 'postgres' then
+      raise exception 'verify: security definer public.% owned by %', r.proname, r.owner;
+    end if;
+  end loop;
+
+  for r in
+    select c.oid, c.relname, c.relrowsecurity
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind = 'r'
+  loop
+    if not r.relrowsecurity then
+      raise exception 'verify: RLS disabled on public.%', r.relname;
+    end if;
+    if has_table_privilege('anon', r.oid, 'select,insert,update,delete,truncate,references,trigger') then
+      raise exception 'verify: anon has privileges on public.%', r.relname;
+    end if;
+    if has_table_privilege('authenticated', r.oid, 'truncate,references,trigger') then
+      raise exception 'verify: authenticated has truncate/references/trigger on public.%', r.relname;
+    end if;
+  end loop;
+
+  for r in
+    select c.oid, c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname in (
+      'job_listings','job_matches','email_connections','recruiter_messages','subscriptions',
+      'credit_accounts','credit_transactions','ai_generation_logs','billing_customers','stripe_events')
+  loop
+    if has_table_privilege('authenticated', r.oid, 'insert,update,delete') then
+      raise exception 'verify: authenticated can write server-managed public.%', r.relname;
+    end if;
+  end loop;
+
+  if has_table_privilege('authenticated', 'public.billing_customers', 'select')
+     or has_table_privilege('authenticated', 'public.stripe_events', 'select') then
+    raise exception 'verify: authenticated can read server-only billing tables';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.profiles', 'insert,delete')
+     or has_column_privilege('authenticated', 'public.profiles', 'email', 'update')
+     or has_column_privilege('authenticated', 'public.profiles', 'id', 'update') then
+    raise exception 'verify: authenticated has excess privileges on profiles';
+  end if;
+
+  if not exists (select 1 from storage.buckets where id = 'resumes' and not public) then
+    raise exception 'verify: resumes bucket missing or public';
+  end if;
+end
+$verify$;
+
+commit;
