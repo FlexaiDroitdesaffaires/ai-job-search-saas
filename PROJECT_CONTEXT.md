@@ -87,3 +87,23 @@ Le produit final comprend :
 Ce fichier est la référence produit pour les prochaines phases. Toute décision
 de conception doit préserver ces invariants et servir en priorité le parcours
 de candidature de bout en bout.
+
+## État technique validé au 20 octobre 2026
+
+- Le schéma cœur et la migration additive d'ingestion sont validés uniquement
+  sur Supabase local ; aucune migration distante n'a été lancée.
+- Auth, sessions SSR, onboarding, stockage privé PDF/DOCX et extraction
+  déterministe sont opérationnels et testés localement.
+- Les invariants de soumission, l'idempotence, les crédits atomiques et les RLS
+  passent les 28 assertions pgTAP et les tests d'intégration locaux.
+- Le premier connecteur réel ingère des offres Remote OK dans
+  `job_listings`. Il vérifie fraîcheur et URL, conserve la provenance, calcule
+  une clé de regroupement et rejoue par `(provider, external_id)` sans doublon.
+- Remote OK impose une attribution visible et un lien vers l'offre source. Une
+  future carte d'offre ne pourra pas masquer cette provenance.
+- Aucune offre n'est encore matchée à un profil, aucune décision de swipe n'est
+  exposée et aucune candidature réelle n'est soumise.
+
+La prochaine verticale prioritaire est le matching déterministe explicable,
+puis la décision accepter/refuser qui crée une candidature `draft` uniquement
+après acceptation.

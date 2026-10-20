@@ -1,12 +1,13 @@
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { resolve } from "node:path"
 import { PGlite } from "@electric-sql/pglite"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
-const migration = readFileSync(
-  resolve(process.cwd(), "supabase/migrations/20261019000000_core_schema.sql"),
-  "utf8",
-)
+const migrationDirectory = resolve(process.cwd(), "supabase/migrations")
+const migrations = readdirSync(migrationDirectory)
+  .filter((file) => file.endsWith(".sql"))
+  .sort()
+  .map((file) => readFileSync(resolve(migrationDirectory, file), "utf8"))
 
 describe("core migration PostgreSQL compatibility smoke test", () => {
   const db = new PGlite()
@@ -57,7 +58,7 @@ describe("core migration PostgreSQL compatibility smoke test", () => {
       alter default privileges for role postgres in schema public
         grant usage, select on sequences to anon, authenticated, service_role;
     `)
-    await db.exec(migration)
+    for (const migration of migrations) await db.exec(migration)
     await db.exec(`
       insert into auth.users (id, email, raw_user_meta_data) values
         ('11111111-1111-1111-1111-111111111111', 'one@example.test', '{"full_name":"One"}'),
@@ -72,6 +73,43 @@ describe("core migration PostgreSQL compatibility smoke test", () => {
       "select count(*)::integer as count from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and obj_description(c.oid, 'pg_class')='app:core_schema_v1'",
     )
     expect(result.rows[0]?.count).toBe(25)
+  })
+
+  it("ajoute les marqueurs de fraîcheur des offres", async () => {
+    const result = await db.query<{ column_name: string }>(`
+      select column_name from information_schema.columns
+      where table_schema = 'public' and table_name = 'job_listings'
+        and column_name in ('last_seen_at', 'source_url_verified_at', 'source_url_status', 'is_active')
+      order by column_name
+    `)
+    expect(result.rows.map((row) => row.column_name)).toEqual([
+      "is_active", "last_seen_at", "source_url_status", "source_url_verified_at",
+    ])
+  })
+
+  it("réserve l'ingestion au serveur et expose les offres aux utilisateurs", async () => {
+    await db.exec(`
+      set role service_role;
+      insert into public.job_listings (
+        provider, external_id, title, company, source_url, posted_at, dedupe_key,
+        source_url_verified_at, source_url_status, is_active
+      ) values (
+        'fixture', 'job-1', 'Engineer', 'Example', 'https://example.test/jobs/1', now(),
+        repeat('a', 64), now(), 200, true
+      );
+      reset role;
+      set role authenticated;
+      set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+    `)
+    const visible = await db.query<{ external_id: string }>(
+      "select external_id from public.job_listings where provider='fixture'",
+    )
+    expect(visible.rows).toEqual([{ external_id: "job-1" }])
+    await expect(db.exec(`
+      insert into public.job_listings (provider, external_id, title, company, dedupe_key)
+      values ('fixture', 'forbidden', 'Engineer', 'Example', repeat('b', 64))
+    `)).rejects.toThrow()
+    await db.exec("reset role")
   })
 
   it("isole deux utilisateurs avec RLS", async () => {

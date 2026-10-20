@@ -43,7 +43,9 @@ réelle de soumission par un adaptateur autorisé, soit un état explicite
 
 ## Ordre de livraison et critères d'arrêt
 
-- **Lot A :** connecteur d'ingestion unique, déduplication et tests de replay.
+- **Lot A — validé localement :** connecteur Remote OK, déduplication, fraîcheur,
+  vérification d'URL et tests de replay. L'attribution et le lien source sont
+  obligatoires.
 - **Lot B :** matching déterministe expliqué et file de swipe avec décisions
   idempotentes.
 - **Lot C :** préparation, aperçu figé et approbation invalidable.

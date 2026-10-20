@@ -12,3 +12,9 @@ une autorisation explicite distincte.
 Le bucket `resumes` n'est géré que s'il porte son enregistrement de propriété
 `app:core_schema_v1`. Un bucket existant sans ce marqueur fait échouer la
 migration avant toute modification.
+
+La migration `20261020000000_job_ingestion.sql` ajoute uniquement quatre
+colonnes et un index à `job_listings`, après vérification du marqueur de
+propriété. Aucun rollback automatique ne supprime ces colonnes : elles peuvent
+contenir l'historique de fraîcheur d'offres réelles. Une suppression exige une
+autorisation et une sauvegarde distinctes.

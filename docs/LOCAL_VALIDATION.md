@@ -25,8 +25,22 @@
   et `/onboarding` redirigent sans session vers `/login` avec leur paramètre
   `next` ;
 - TypeScript, lint et build : réussis ;
-- tests standards : 17 réussis, test Supabase réel volontairement séparé ;
+- tests standards : 23 réussis, test Supabase réel volontairement séparé ;
 - nettoyage vérifié : 0 utilisateur éphémère et 0 objet CV restant.
+
+## Validation ingestion — 2026-10-20
+
+- migration locale `20261020000000_job_ingestion` appliquée sans reset ;
+- flux public Remote OK : 99 enregistrements reçus lors du contrôle ;
+- fenêtre de 45 jours : 30 enregistrements anciens écartés ;
+- lot volontairement limité à 5 : 5 URL HTTPS réellement vérifiées ;
+- premier passage : 5 insertions ; second passage : 0 insertion et 5 mises à
+  jour ;
+- contrôle PostgreSQL : 5 lignes, 5 identifiants fournisseur distincts,
+  5 offres actives vérifiées et aucun doublon `(provider, external_id)`.
+
+Ces offres sont réelles et stockées uniquement dans l'instance locale. Elles ne
+constituent ni des candidatures acceptées, ni préparées, ni soumises.
 
 ## Particularité de l'environnement
 

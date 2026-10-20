@@ -9,6 +9,7 @@
     "start": "next start",
     "supabase:start": "supabase start --exclude studio",
     "supabase:reset": "supabase db reset --local",
+    "jobs:ingest:local": "tsx scripts/ingest-remoteok.ts --local",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
@@ -53,6 +54,7 @@
     "postcss": "^8.5",
     "supabase": "2.121.0",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "5.7.3",
     "vitest": "^5.0.5"
   }
