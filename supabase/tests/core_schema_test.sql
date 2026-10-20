@@ -30,7 +30,8 @@ select is(
 select throws_ok($$
   insert into public.resumes (user_id, title, storage_path)
   values ('22222222-2222-2222-2222-222222222222', 'CV interdit', '22222222-2222-2222-2222-222222222222/cv.pdf')
-$$, 'isolation des métadonnées CV');
+$$, '42501', 'new row violates row-level security policy for table "resumes"',
+  'isolation des métadonnées CV');
 
 select lives_ok($$
   insert into storage.objects (bucket_id, name, owner_id)
@@ -40,12 +41,14 @@ $$, 'utilisateur écrit dans son dossier CV');
 select throws_ok($$
   insert into storage.objects (bucket_id, name, owner_id)
   values ('resumes', '22222222-2222-2222-2222-222222222222/forbidden.pdf', '11111111-1111-1111-1111-111111111111')
-$$, 'utilisateur ne peut pas écrire dans le dossier CV tiers');
+$$, '42501', 'new row violates row-level security policy for table "objects"',
+  'utilisateur ne peut pas écrire dans le dossier CV tiers');
 
 select throws_ok($$
   insert into public.applications (user_id, company, job_title, status)
   values ('11111111-1111-1111-1111-111111111111', 'False Claim', 'Role', 'applied')
-$$, 'applied direct sans preuve refusé');
+$$, '42501', 'submission fields are server-managed',
+  'applied direct sans preuve refusé');
 
 select lives_ok($$
   insert into public.applications (id, user_id, company, job_title)
@@ -88,7 +91,8 @@ select is(
 select throws_ok($$
   select public.start_application_submission(
     'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'idem-adapter-0002', 'test-adapter', repeat('a', 64))
-$$, 'claim concurrent différent refusé');
+$$, 'P0001', 'application must be approved before submission',
+  'claim concurrent différent refusé');
 
 select lives_ok($$
   select public.confirm_application_submission(
@@ -114,17 +118,19 @@ $$, 'dépense atomique acceptée');
 
 select throws_ok($$
   select public.spend_credits('11111111-1111-1111-1111-111111111111', 100, 'ai_application', 'test-app', 'spend-idem-0002')
-$$, 'solde insuffisant refusé');
+$$, 'P0001', 'insufficient credits', 'solde insuffisant refusé');
 
 set local role authenticated;
 set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 select throws_ok($$
   update public.application_submissions set state = 'failed'
-$$, 'client ne modifie pas le journal serveur');
+$$, '42501', 'permission denied for table application_submissions',
+  'client ne modifie pas le journal serveur');
 
 select throws_ok($$
   select * from public.app_resource_ownership
-$$, 'registre de propriété invisible au client');
+$$, '42501', 'permission denied for table app_resource_ownership',
+  'registre de propriété invisible au client');
 
 select is(
   (select count(*)::integer from public.application_submissions where user_id = '22222222-2222-2222-2222-222222222222'),

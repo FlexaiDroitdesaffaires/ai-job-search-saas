@@ -7,16 +7,17 @@ Le contrat produit et les règles de fiabilité sont dans
 
 - Node.js 22 ou supérieur ;
 - pnpm 12.3.4 via Corepack ;
-- Docker Desktop et Supabase CLI pour la base locale.
+- Docker Desktop. La CLI Supabase compatible est verrouillée dans les
+  dépendances de développement.
 
 ## Installation
 
 ```bash
 corepack pnpm install --frozen-lockfile
 cp .env.example .env.local
-supabase start
-supabase db reset
-supabase status
+corepack pnpm supabase:start
+corepack pnpm supabase:reset
+corepack pnpm exec supabase status
 corepack pnpm dev
 ```
 
@@ -24,9 +25,11 @@ Reporter dans `.env.local` l'API URL et la clé publique `anon` affichées par
 `supabase status`. Ne jamais placer de clé `service_role` dans une variable
 `NEXT_PUBLIC_*` ni dans le navigateur.
 
-`supabase db reset` détruit uniquement la base locale ciblée. Vérifier l'URL
-locale avant de l'exécuter. L'application ne lance jamais automatiquement une
-migration ou un reset.
+`supabase:reset` utilise explicitement `--local` et détruit uniquement la base
+locale ciblée. Vérifier que les URL affichées par `supabase status` utilisent
+`127.0.0.1` avant de l'exécuter. L'application ne lance jamais automatiquement
+une migration ou un reset. Studio est exclu du démarrage, car il n'est pas
+requis pour Auth, Postgres, REST ou Storage.
 
 ## Vérifications
 
@@ -35,12 +38,14 @@ corepack pnpm typecheck
 corepack pnpm lint
 corepack pnpm test
 corepack pnpm build
-supabase test db
+corepack pnpm test:db
+corepack pnpm test:supabase
 ```
 
 Les tests SQL nécessitent les conteneurs Supabase locaux. Ils couvrent les RLS,
 l'isolation des CV, les privilèges, le registre de crédits et l'idempotence des
-soumissions.
+soumissions. `test:supabase` crée des comptes éphémères et des fichiers PDF/DOCX
+non sensibles, puis les supprime à la fin du test.
 
 ## Parcours disponible
 
