@@ -1,0 +1,2 @@
+-- Intentionally empty. Product data must come from real user input or an
+-- explicitly labelled development fixture, never from implicit fake records.

@@ -32,12 +32,16 @@ declare
     'cover_letters','applications','application_events','screening_answers',
     'email_connections','recruiter_messages','subscriptions','credit_accounts',
     'credit_transactions','notifications','ai_generation_logs',
-    'billing_customers','stripe_events'];
+    'billing_customers','stripe_events','application_submissions',
+    'app_resource_ownership'];
   v_functions constant text[] := array[
     'set_updated_at','handle_new_user','handle_user_email_change',
     'guard_application_server_fields','invalidate_application_approval',
-    'forbid_ledger_update','spend_credits','grant_credits'];
+    'forbid_ledger_update','spend_credits','grant_credits',
+    'start_application_submission','confirm_application_submission',
+    'mark_application_submission_uncertain','record_manual_submission'];
   r record;
+  v_bucket_owned boolean := false;
 begin
   if current_setting('server_version_num')::int < 150000 then
     raise exception 'core_schema requires Postgres 15+';
@@ -78,8 +82,20 @@ begin
     end if;
   end loop;
 
-  if exists (select 1 from storage.buckets b where b.id = 'resumes' and b.public) then
-    raise exception 'Refusing to proceed: storage bucket "resumes" exists and is PUBLIC';
+  if exists (select 1 from storage.buckets b where b.id = 'resumes') then
+    if to_regclass('public.app_resource_ownership') is null then
+      raise exception 'Refusing to proceed: storage bucket "resumes" already exists without an ownership marker';
+    end if;
+    execute $sql$
+      select exists (
+        select 1 from public.app_resource_ownership
+        where resource_type = 'storage_bucket'
+          and resource_key = 'resumes'
+          and marker = 'app:core_schema_v1')
+    $sql$ into v_bucket_owned;
+    if not v_bucket_owned then
+      raise exception 'Refusing to proceed: storage bucket "resumes" is not owned by this migration';
+    end if;
   end if;
 
   if exists (
@@ -104,6 +120,18 @@ end;
 $$;
 comment on function public.set_updated_at() is 'app:core_schema_v1';
 revoke all on function public.set_updated_at() from public, anon, authenticated;
+
+-- Explicit ownership registry for managed resources that cannot carry a row
+-- comment (notably storage buckets). Existing unmarked resources are never
+-- adopted or modified by this migration.
+create table if not exists public.app_resource_ownership (
+  resource_type text not null,
+  resource_key  text not null,
+  marker        text not null check (marker = 'app:core_schema_v1'),
+  created_at    timestamptz not null default now(),
+  primary key (resource_type, resource_key)
+);
+comment on table public.app_resource_ownership is 'app:core_schema_v1';
 
 -- -----------------------------------------------------------------------------
 -- 2. PROFILE & CAREER DATA
@@ -347,14 +375,31 @@ create table if not exists public.applications (
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   unique (id, user_id),
-  -- 'submitted' is only reachable with real adapter evidence (no simulated success)
+  -- 'submitted' is only reachable with adapter evidence or an explicit manual
+  -- confirmation recorded through record_manual_submission().
   constraint applications_submitted_has_evidence check (
     prep_state <> 'submitted'
-    or (submission_method = 'adapter' and submitted_at is not null and submission_evidence is not null)),
+    or (
+      submitted_at is not null
+      and submission_evidence is not null
+      and (
+        submission_method = 'adapter'
+        or (
+          submission_method = 'manual'
+          and submission_evidence @> '{"confirmed_by_user": true}'::jsonb
+        )
+      )
+    )),
   constraint applications_manual_has_timestamp check (
     submission_method is distinct from 'manual' or submitted_at is not null),
   constraint applications_approval_timestamped check (
     prep_state not in ('approved','submitting','submitted') or approved_at is not null),
+  constraint applications_status_requires_submission check (
+    status not in ('applied','awaiting_response','interview','offer','rejected')
+    or prep_state = 'submitted'),
+  constraint applications_submitted_has_pipeline_status check (
+    prep_state <> 'submitted'
+    or status in ('applied','awaiting_response','interview','offer','rejected','withdrawn')),
   -- composite FKs: referenced resume version / letter MUST belong to same user
   foreign key (resume_version_id, user_id) references public.resume_versions(id, user_id) on delete set null (resume_version_id),
   foreign key (cover_letter_id, user_id)   references public.cover_letters(id, user_id)   on delete set null (cover_letter_id)
@@ -405,7 +450,9 @@ begin
 
   if tg_op = 'INSERT' then
     if new.prep_state in ('approved','failed')
-       or new.submission_method = 'adapter'
+       or new.status in ('applied','awaiting_response','interview','offer','rejected')
+       or new.submission_method is not null
+       or new.submitted_at is not null
        or new.submission_evidence is not null then
       raise exception 'submission fields are server-managed' using errcode = '42501';
     end if;
@@ -416,7 +463,9 @@ begin
        new.prep_state is distinct from old.prep_state
        or new.resume_version_id is distinct from old.resume_version_id
        or new.cover_letter_id is distinct from old.cover_letter_id
-       or new.job_url is distinct from old.job_url) then
+       or new.job_url is distinct from old.job_url
+       or new.company is distinct from old.company
+       or new.job_title is distinct from old.job_title) then
     raise exception 'application is locked while submitting/submitted' using errcode = '42501';
   end if;
   if new.prep_state is distinct from old.prep_state and new.prep_state in ('submitting','submitted','failed') then
@@ -425,7 +474,9 @@ begin
   if old.prep_state = 'approved' and new.prep_state = 'approved' and (
        new.resume_version_id is distinct from old.resume_version_id
        or new.cover_letter_id is distinct from old.cover_letter_id
-       or new.job_url is distinct from old.job_url) then
+       or new.job_url is distinct from old.job_url
+       or new.company is distinct from old.company
+       or new.job_title is distinct from old.job_title) then
     new.prep_state := 'ready_for_review';
     new.approved_at := null;
   end if;
@@ -436,8 +487,8 @@ begin
      and (new.submission_method = 'adapter' or old.submission_method = 'adapter') then
     raise exception 'adapter submissions are server-managed' using errcode = '42501';
   end if;
-  if old.submission_method = 'adapter' and new.submitted_at is distinct from old.submitted_at then
-    raise exception 'adapter submission timestamp is immutable' using errcode = '42501';
+  if new.submitted_at is distinct from old.submitted_at then
+    raise exception 'submission timestamp is server-managed' using errcode = '42501';
   end if;
   return new;
 end;
@@ -461,6 +512,262 @@ create table if not exists public.application_events (
 comment on table public.application_events is 'app:core_schema_v1';
 create index if not exists application_events_app_idx on public.application_events(application_id, created_at desc);
 create index if not exists application_events_user_idx on public.application_events(user_id, created_at desc);
+
+-- One durable record per external submission intent. The active unique index
+-- serializes concurrent workers. A processing record is never automatically
+-- retried after an unknown external outcome: it must first be confirmed or
+-- marked requires_reconciliation.
+create table if not exists public.application_submissions (
+  id                     uuid primary key default gen_random_uuid(),
+  user_id                uuid not null references auth.users(id) on delete cascade,
+  application_id         uuid not null,
+  idempotency_key        text not null check (char_length(idempotency_key) between 8 and 200),
+  method                 text not null check (method in ('adapter','manual')),
+  provider               text check (char_length(provider) between 1 and 80),
+  payload_hash           text check (payload_hash ~ '^[0-9a-f]{64}$'),
+  state                  text not null check (state in ('processing','confirmed','failed','requires_reconciliation')),
+  attempt_count          smallint not null default 1 check (attempt_count between 1 and 100),
+  provider_submission_id text check (char_length(provider_submission_id) <= 300),
+  evidence               jsonb,
+  error_message          text check (char_length(error_message) <= 2000),
+  started_at             timestamptz not null default now(),
+  confirmed_at           timestamptz,
+  updated_at             timestamptz not null default now(),
+  unique (id, user_id),
+  unique (user_id, idempotency_key),
+  constraint application_submissions_owner_fk
+    foreign key (application_id, user_id)
+    references public.applications(id, user_id) on delete cascade,
+  constraint application_submissions_adapter_payload check (
+    method <> 'adapter' or (provider is not null and payload_hash is not null)),
+  constraint application_submissions_confirmation check (
+    state <> 'confirmed'
+    or (confirmed_at is not null and evidence is not null)),
+  constraint application_submissions_manual_confirmation check (
+    method <> 'manual'
+    or (state = 'confirmed' and evidence @> '{"confirmed_by_user": true}'::jsonb))
+);
+comment on table public.application_submissions is 'app:core_schema_v1';
+create unique index if not exists application_submissions_one_active_per_app
+  on public.application_submissions(application_id)
+  where state in ('processing','confirmed','requires_reconciliation');
+create unique index if not exists application_submissions_provider_receipt_idx
+  on public.application_submissions(provider, provider_submission_id)
+  where provider_submission_id is not null;
+create index if not exists application_submissions_user_idx
+  on public.application_submissions(user_id, started_at desc);
+create or replace trigger application_submissions_updated
+  before update on public.application_submissions
+  for each row execute function public.set_updated_at();
+
+-- Atomically claims an approved application for an adapter. Replaying the same
+-- key and payload returns the existing record; a different concurrent intent is
+-- rejected by the application row lock and active unique index.
+create or replace function public.start_application_submission(
+  p_application_id uuid, p_idempotency_key text, p_provider text, p_payload_hash text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_app public.applications%rowtype;
+  v_existing public.application_submissions%rowtype;
+  v_submission_id uuid;
+begin
+  if p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 200 then
+    raise exception 'invalid idempotency key' using errcode = '22023';
+  end if;
+  if p_provider is null or char_length(p_provider) not between 1 and 80 then
+    raise exception 'invalid provider' using errcode = '22023';
+  end if;
+  if p_payload_hash is null or p_payload_hash !~ '^[0-9a-f]{64}$' then
+    raise exception 'invalid payload hash' using errcode = '22023';
+  end if;
+
+  select * into v_app from public.applications
+   where id = p_application_id for update;
+  if not found then
+    raise exception 'application not found' using errcode = 'P0002';
+  end if;
+
+  select * into v_existing from public.application_submissions
+   where user_id = v_app.user_id and idempotency_key = p_idempotency_key;
+  if found then
+    if v_existing.application_id <> p_application_id
+       or v_existing.method <> 'adapter'
+       or v_existing.provider <> p_provider
+       or v_existing.payload_hash <> p_payload_hash then
+      raise exception 'idempotency key reused with different parameters' using errcode = '22023';
+    end if;
+    return jsonb_build_object(
+      'submission_id', v_existing.id,
+      'state', v_existing.state,
+      'replayed', true);
+  end if;
+
+  if v_app.prep_state <> 'approved' then
+    raise exception 'application must be approved before submission' using errcode = 'P0001';
+  end if;
+
+  insert into public.application_submissions (
+    user_id, application_id, idempotency_key, method, provider, payload_hash, state)
+  values (
+    v_app.user_id, p_application_id, p_idempotency_key, 'adapter', p_provider,
+    p_payload_hash, 'processing')
+  returning id into v_submission_id;
+
+  update public.applications
+     set prep_state = 'submitting'
+   where id = p_application_id;
+
+  return jsonb_build_object(
+    'submission_id', v_submission_id,
+    'state', 'processing',
+    'replayed', false);
+end;
+$$;
+comment on function public.start_application_submission(uuid, text, text, text) is 'app:core_schema_v1';
+revoke all on function public.start_application_submission(uuid, text, text, text) from public, anon, authenticated;
+grant execute on function public.start_application_submission(uuid, text, text, text) to service_role;
+
+create or replace function public.confirm_application_submission(
+  p_submission_id uuid, p_provider_submission_id text, p_evidence jsonb)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_submission public.application_submissions%rowtype;
+begin
+  if p_provider_submission_id is null or char_length(p_provider_submission_id) not between 1 and 300 then
+    raise exception 'provider submission id required' using errcode = '22023';
+  end if;
+  if p_evidence is null or jsonb_typeof(p_evidence) <> 'object' then
+    raise exception 'submission evidence object required' using errcode = '22023';
+  end if;
+
+  select * into v_submission from public.application_submissions
+   where id = p_submission_id for update;
+  if not found or v_submission.method <> 'adapter' then
+    raise exception 'adapter submission not found' using errcode = 'P0002';
+  end if;
+  if v_submission.state = 'confirmed' then
+    if v_submission.provider_submission_id is distinct from p_provider_submission_id then
+      raise exception 'confirmed submission receipt mismatch' using errcode = '22023';
+    end if;
+    return jsonb_build_object('submission_id', v_submission.id, 'state', 'confirmed', 'replayed', true);
+  end if;
+  if v_submission.state not in ('processing','requires_reconciliation') then
+    raise exception 'submission is not confirmable from state %', v_submission.state using errcode = 'P0001';
+  end if;
+
+  update public.application_submissions
+     set state = 'confirmed', provider_submission_id = p_provider_submission_id,
+         evidence = p_evidence, confirmed_at = now(), error_message = null
+   where id = p_submission_id;
+
+  update public.applications
+     set prep_state = 'submitted', status = 'applied', submitted_at = now(),
+         submission_method = 'adapter',
+         submission_evidence = p_evidence || jsonb_build_object(
+           'provider', v_submission.provider,
+           'provider_submission_id', p_provider_submission_id,
+           'idempotency_key', v_submission.idempotency_key)
+   where id = v_submission.application_id;
+
+  return jsonb_build_object('submission_id', v_submission.id, 'state', 'confirmed', 'replayed', false);
+end;
+$$;
+comment on function public.confirm_application_submission(uuid, text, jsonb) is 'app:core_schema_v1';
+revoke all on function public.confirm_application_submission(uuid, text, jsonb) from public, anon, authenticated;
+grant execute on function public.confirm_application_submission(uuid, text, jsonb) to service_role;
+
+create or replace function public.mark_application_submission_uncertain(
+  p_submission_id uuid, p_error_message text)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if p_error_message is null or char_length(p_error_message) not between 1 and 2000 then
+    raise exception 'error message required' using errcode = '22023';
+  end if;
+  update public.application_submissions
+     set state = 'requires_reconciliation', error_message = p_error_message
+   where id = p_submission_id and state = 'processing';
+  if not found then
+    raise exception 'processing submission not found' using errcode = 'P0002';
+  end if;
+end;
+$$;
+comment on function public.mark_application_submission_uncertain(uuid, text) is 'app:core_schema_v1';
+revoke all on function public.mark_application_submission_uncertain(uuid, text) from public, anon, authenticated;
+grant execute on function public.mark_application_submission_uncertain(uuid, text) to service_role;
+
+-- The only authenticated-client path that can record an applied application
+-- without adapter evidence. The function itself creates the explicit user
+-- confirmation and performs the full state transition atomically.
+create or replace function public.record_manual_submission(
+  p_application_id uuid, p_submitted_at timestamptz, p_note text default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_app public.applications%rowtype;
+  v_submission_id uuid;
+  v_evidence jsonb;
+begin
+  if v_user_id is null then
+    raise exception 'authentication required' using errcode = '42501';
+  end if;
+  if p_submitted_at is null or p_submitted_at > now() + interval '5 minutes' then
+    raise exception 'invalid manual submission timestamp' using errcode = '22023';
+  end if;
+  if char_length(p_note) > 2000 then
+    raise exception 'manual submission note too long' using errcode = '22023';
+  end if;
+
+  select * into v_app from public.applications
+   where id = p_application_id and user_id = v_user_id for update;
+  if not found then
+    raise exception 'application not found' using errcode = 'P0002';
+  end if;
+  if v_app.prep_state = 'submitted' then
+    if v_app.submission_method <> 'manual' then
+      raise exception 'application already submitted by adapter' using errcode = 'P0001';
+    end if;
+    select id into v_submission_id from public.application_submissions
+     where application_id = p_application_id and state = 'confirmed';
+    return jsonb_build_object('submission_id', v_submission_id, 'state', 'confirmed', 'replayed', true);
+  end if;
+  if v_app.prep_state in ('submitting') then
+    raise exception 'application has an adapter submission in progress' using errcode = 'P0001';
+  end if;
+
+  v_evidence := jsonb_strip_nulls(jsonb_build_object(
+    'confirmed_by_user', true,
+    'recorded_at', now(),
+    'note', nullif(btrim(p_note), '')));
+
+  -- Preserve the same state-machine guarantees used for adapter submissions.
+  if v_app.prep_state <> 'approved' then
+    update public.applications set prep_state = 'approved' where id = p_application_id;
+  end if;
+  update public.applications set prep_state = 'submitting' where id = p_application_id;
+  update public.applications
+     set prep_state = 'submitted', status = 'applied', submitted_at = p_submitted_at,
+         submission_method = 'manual', submission_evidence = v_evidence
+   where id = p_application_id;
+
+  insert into public.application_submissions (
+    user_id, application_id, idempotency_key, method, state, evidence, confirmed_at)
+  values (
+    v_user_id, p_application_id, 'manual:' || p_application_id::text,
+    'manual', 'confirmed', v_evidence, now())
+  returning id into v_submission_id;
+
+  insert into public.application_events (
+    user_id, application_id, event_type, from_status, to_status, details)
+  values (
+    v_user_id, p_application_id, 'manual_submission_recorded', v_app.status,
+    'applied', jsonb_build_object('submission_id', v_submission_id));
+
+  return jsonb_build_object('submission_id', v_submission_id, 'state', 'confirmed', 'replayed', false);
+end;
+$$;
+comment on function public.record_manual_submission(uuid, timestamptz, text) is 'app:core_schema_v1';
+revoke all on function public.record_manual_submission(uuid, timestamptz, text) from public, anon, authenticated;
+grant execute on function public.record_manual_submission(uuid, timestamptz, text) to authenticated;
 
 create table if not exists public.screening_answers (
   id             uuid primary key default gen_random_uuid(),
@@ -785,11 +1092,14 @@ declare
     'cover_letters','applications','application_events','screening_answers',
     'email_connections','recruiter_messages','subscriptions','credit_accounts',
     'credit_transactions','notifications','ai_generation_logs',
-    'billing_customers','stripe_events'];
+    'billing_customers','stripe_events','application_submissions',
+    'app_resource_ownership'];
   read_only_tables constant text[] := array[
     'job_listings','job_matches','email_connections','recruiter_messages',
-    'subscriptions','credit_accounts','credit_transactions','ai_generation_logs'];
-  server_only_tables constant text[] := array['billing_customers','stripe_events'];
+    'subscriptions','credit_accounts','credit_transactions','ai_generation_logs',
+    'application_submissions'];
+  server_only_tables constant text[] := array[
+    'billing_customers','stripe_events','app_resource_ownership'];
 begin
   foreach t in array all_tables loop
     execute format('revoke all on table public.%I from public, anon', t);
@@ -831,10 +1141,11 @@ declare
     'resume_versions','saved_jobs','cover_letters','applications','screening_answers'];
   owner_read constant text[] := array[
     'job_matches','email_connections','recruiter_messages','subscriptions',
-    'credit_accounts','credit_transactions','ai_generation_logs'];
+    'credit_accounts','credit_transactions','ai_generation_logs',
+    'application_submissions'];
 begin
   -- billing_customers / stripe_events: RLS on, no policies => service_role only
-  foreach t in array owner_crud || owner_read || array['profiles','job_listings','application_events','notifications','billing_customers','stripe_events'] loop
+  foreach t in array owner_crud || owner_read || array['profiles','job_listings','application_events','notifications','billing_customers','stripe_events','app_resource_ownership'] loop
     execute format('alter table public.%I enable row level security', t);
   end loop;
 
@@ -941,6 +1252,10 @@ on conflict (id) do update
       file_size_limit = excluded.file_size_limit,
       allowed_mime_types = excluded.allowed_mime_types;
 
+insert into public.app_resource_ownership (resource_type, resource_key, marker)
+values ('storage_bucket', 'resumes', 'app:core_schema_v1')
+on conflict (resource_type, resource_key) do nothing;
+
 drop policy if exists resumes_owner_select on storage.objects;
 drop policy if exists resumes_owner_insert on storage.objects;
 drop policy if exists resumes_owner_update on storage.objects;
@@ -974,10 +1289,15 @@ begin
       raise exception 'verify: public.% has no pinned empty search_path', r.proname;
     end if;
     foreach v_role in array array['public','anon','authenticated'] loop
-      if has_function_privilege(v_role, r.oid, 'execute') then
+      if has_function_privilege(v_role, r.oid, 'execute')
+         and not (r.proname = 'record_manual_submission' and v_role = 'authenticated') then
         raise exception 'verify: % can execute public.%', v_role, r.proname;
       end if;
     end loop;
+    if r.proname = 'record_manual_submission'
+       and not has_function_privilege('authenticated', r.oid, 'execute') then
+      raise exception 'verify: authenticated cannot execute public.record_manual_submission';
+    end if;
     if r.prosecdef and r.owner <> 'postgres' then
       raise exception 'verify: security definer public.% owned by %', r.proname, r.owner;
     end if;
@@ -987,6 +1307,7 @@ begin
     select c.oid, c.relname, c.relrowsecurity
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public' and c.relkind = 'r'
+      and obj_description(c.oid, 'pg_class') = 'app:core_schema_v1'
   loop
     if not r.relrowsecurity then
       raise exception 'verify: RLS disabled on public.%', r.relname;
@@ -1003,7 +1324,8 @@ begin
     select c.oid, c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public' and c.relname in (
       'job_listings','job_matches','email_connections','recruiter_messages','subscriptions',
-      'credit_accounts','credit_transactions','ai_generation_logs','billing_customers','stripe_events')
+      'credit_accounts','credit_transactions','ai_generation_logs','billing_customers','stripe_events',
+      'application_submissions','app_resource_ownership')
   loop
     if has_table_privilege('authenticated', r.oid, 'insert,update,delete') then
       raise exception 'verify: authenticated can write server-managed public.%', r.relname;
