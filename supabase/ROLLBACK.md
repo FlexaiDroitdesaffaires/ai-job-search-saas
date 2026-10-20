@@ -18,3 +18,11 @@ colonnes et un index à `job_listings`, après vérification du marqueur de
 propriété. Aucun rollback automatique ne supprime ces colonnes : elles peuvent
 contenir l'historique de fraîcheur d'offres réelles. Une suppression exige une
 autorisation et une sauvegarde distinctes.
+
+La migration `20261021000000_matching_swipe.sql` ajoute un index unique partiel,
+deux politiques RLS et la fonction `decide_job`, puis retire les écritures
+directes du rôle `authenticated` sur `saved_jobs`. Elle ne transforme ni ne
+supprime aucune ligne. Un retour arrière compatible doit d’abord arrêter les
+appels à `decide_job`; restaurer les écritures directes affaiblirait l’atomicité
+et n’est donc pas automatisé. La suppression de l’index exige au préalable une
+revue des risques de doublons.

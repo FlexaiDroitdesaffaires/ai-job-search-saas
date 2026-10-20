@@ -42,6 +42,32 @@
 Ces offres sont réelles et stockées uniquement dans l'instance locale. Elles ne
 constituent ni des candidatures acceptées, ni préparées, ni soumises.
 
+## Validation matching et swipe — 2026-10-20
+
+- migration locale `20261021000000_matching_swipe` appliquée avec
+  `supabase migration up --local`, sans reset ;
+- moteur de matching déterministe : stabilité, données absentes et offre
+  incompatible testées ;
+- décision réelle via GoTrue/PostgREST local : refus sans candidature,
+  acceptation avec brouillon, replay et deux appels concurrents réussis sans
+  doublon ;
+- RLS : décisions, candidatures et scores d’un utilisateur invisibles à
+  l’autre ; écriture d’un score pour autrui refusée ;
+- persistance après recréation du client et restauration de session vérifiée ;
+- toutes les candidatures créées par le swipe restent `saved` / `draft`, sans
+  preuve ni faux état `submitted` ;
+- tests standards : 37 réussis et 2 tests locaux opt-in ignorés dans la commande
+  standard ; tests Supabase réels : 2 réussis ; pgTAP : 28/28 ;
+- TypeScript, lint et build de production, incluant `/dashboard/jobs` : réussis.
+- contrôle HTTP local : `/dashboard/jobs` sans session répond `307` vers
+  `/login?next=%2Fdashboard%2Fjobs`.
+
+Le geste et les boutons sont implémentés et compilés. La validation automatisée
+couvre leur backend transactionnel et la protection anti-double action ; un
+test navigateur gestuel dédié reste à ajouter si une suite E2E est introduite.
+Le navigateur intégré n’était pas disponible dans cet environnement ; aucune
+validation visuelle manuelle n’est donc revendiquée.
+
 ## Particularité de l'environnement
 
 Docker Desktop refuse les bind mounts depuis ce dossier `Documents`. Studio est

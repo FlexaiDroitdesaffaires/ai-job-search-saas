@@ -46,8 +46,9 @@ réelle de soumission par un adaptateur autorisé, soit un état explicite
 - **Lot A — validé localement :** connecteur Remote OK, déduplication, fraîcheur,
   vérification d'URL et tests de replay. L'attribution et le lien source sont
   obligatoires.
-- **Lot B :** matching déterministe expliqué et file de swipe avec décisions
-  idempotentes.
+- **Lot B — validé localement :** matching déterministe expliqué, persistance
+  des scores, file de swipe et décisions atomiques/idempotentes. Le refus ne
+  crée rien ; l’acceptation crée uniquement une candidature `saved` / `draft`.
 - **Lot C :** préparation, aperçu figé et approbation invalidable.
 - **Lot D :** adaptateur en bac à sable/fixture contractuelle, puis validation
   humaine avant toute autorisation d'envoi réel.

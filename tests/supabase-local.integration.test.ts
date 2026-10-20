@@ -174,4 +174,88 @@ describe.runIf(enabled)("Supabase local integration", () => {
     expect(bucketsError).toBeNull()
     expect(buckets?.find((bucket) => bucket.id === "resumes")?.public).toBe(false)
   }, 120_000)
+
+  it("persists isolated, atomic and idempotent swipe decisions", async () => {
+    const status = localStatus()
+    const userOne = client(status.API_URL, status.ANON_KEY)
+    const userTwo = client(status.API_URL, status.ANON_KEY)
+    const service = client(status.API_URL, status.SERVICE_ROLE_KEY)
+    const first = await signUpAndLogin(userOne, "swipe-first")
+    const second = await signUpAndLogin(userTwo, "swipe-second")
+    cleanup.push(() => service.auth.admin.deleteUser(first.id))
+    cleanup.push(() => service.auth.admin.deleteUser(second.id))
+
+    const jobIds = [randomUUID(), randomUUID(), randomUUID()]
+    const { error: fixtureError } = await service.from("job_listings").insert(jobIds.map((id, index) => ({
+      id,
+      provider: "local-test",
+      external_id: `swipe-${id}`,
+      title: `Verified test role ${index}`,
+      company: "Local Test Company",
+      location: "Remote",
+      work_mode: "remote",
+      source_url: `https://example.test/jobs/${id}`,
+      dedupe_key: id.replaceAll("-", ""),
+      source_url_verified_at: new Date().toISOString(),
+      source_url_status: 200,
+      is_active: true,
+      is_demo: false,
+    })))
+    expect(fixtureError).toBeNull()
+    cleanup.push(async () => service.from("job_listings").delete().in("id", jobIds))
+
+    const skipped = await userOne.rpc("decide_job", { p_job_id: jobIds[0], p_decision: "skipped" })
+    expect(skipped.error).toBeNull()
+    expect(skipped.data).toMatchObject({ decision: "skipped", application_id: null })
+    expect((await userOne.from("applications").select("id").eq("job_id", jobIds[0])).data).toEqual([])
+
+    const accepted = await userOne.rpc("decide_job", { p_job_id: jobIds[1], p_decision: "saved" })
+    const replay = await userOne.rpc("decide_job", { p_job_id: jobIds[1], p_decision: "saved" })
+    expect(accepted.error).toBeNull()
+    expect(accepted.data).toMatchObject({ application_status: "saved", preparation_state: "draft" })
+    expect(replay.data).toMatchObject({ application_id: accepted.data.application_id, replayed: true })
+
+    const concurrent = await Promise.all([
+      userOne.rpc("decide_job", { p_job_id: jobIds[2], p_decision: "saved" }),
+      userOne.rpc("decide_job", { p_job_id: jobIds[2], p_decision: "saved" }),
+    ])
+    expect(concurrent.every((result) => result.error === null)).toBe(true)
+    expect(new Set(concurrent.map((result) => result.data.application_id)).size).toBe(1)
+
+    const { data: ownApplications, error: ownApplicationsError } = await userOne
+      .from("applications").select("id,status,prep_state,submission_evidence,job_id").in("job_id", jobIds)
+    expect(ownApplicationsError).toBeNull()
+    expect(ownApplications).toHaveLength(2)
+    expect(ownApplications?.every((application) => application.status === "saved" && application.prep_state === "draft" && application.submission_evidence === null)).toBe(true)
+
+    const { data: foreignApplications, error: foreignApplicationsError } = await userTwo
+      .from("applications").select("id").in("job_id", jobIds)
+    expect(foreignApplicationsError).toBeNull()
+    expect(foreignApplications).toEqual([])
+    expect((await userTwo.from("saved_jobs").select("id").in("job_id", jobIds)).data).toEqual([])
+
+    const directMutation = await userOne.from("saved_jobs").insert({
+      user_id: first.id, job_id: randomUUID(), decision: "saved",
+    })
+    expect(directMutation.error).not.toBeNull()
+
+    const match = await userOne.from("job_matches").upsert({
+      user_id: first.id,
+      job_id: jobIds[1],
+      score: 73,
+      breakdown: { version: "deterministic-v1" },
+      explanation: { satisfied: ["fixture"] },
+    }, { onConflict: "user_id,job_id" })
+    expect(match.error).toBeNull()
+    expect((await userTwo.from("job_matches").select("score").eq("job_id", jobIds[1])).data).toEqual([])
+    expect((await userOne.from("job_matches").insert({ user_id: second.id, job_id: jobIds[1], score: 100 })).error).not.toBeNull()
+
+    const session = (await userOne.auth.getSession()).data.session
+    expect(session).not.toBeNull()
+    const reloaded = client(status.API_URL, status.ANON_KEY)
+    expect((await reloaded.auth.setSession({ access_token: session!.access_token, refresh_token: session!.refresh_token })).error).toBeNull()
+    const persisted = await reloaded.from("saved_jobs").select("job_id,decision").in("job_id", jobIds).order("job_id")
+    expect(persisted.error).toBeNull()
+    expect(persisted.data).toHaveLength(3)
+  }, 120_000)
 })

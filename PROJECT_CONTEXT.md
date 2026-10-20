@@ -90,7 +90,7 @@ de candidature de bout en bout.
 
 ## État technique validé au 20 octobre 2026
 
-- Le schéma cœur et la migration additive d'ingestion sont validés uniquement
+- Le schéma cœur et les migrations additives d'ingestion et de décision sont validés uniquement
   sur Supabase local ; aucune migration distante n'a été lancée.
 - Auth, sessions SSR, onboarding, stockage privé PDF/DOCX et extraction
   déterministe sont opérationnels et testés localement.
@@ -101,9 +101,17 @@ de candidature de bout en bout.
   une clé de regroupement et rejoue par `(provider, external_id)` sans doublon.
 - Remote OK impose une attribution visible et un lien vers l'offre source. Une
   future carte d'offre ne pourra pas masquer cette provenance.
-- Aucune offre n'est encore matchée à un profil, aucune décision de swipe n'est
-  exposée et aucune candidature réelle n'est soumise.
+- Le matching déterministe `deterministic-v1` pondère huit critères, persiste le
+  score et ses explications dans `job_matches`, et distingue compatibilités,
+  incompatibilités et données manquantes. Il ne représente pas une probabilité
+  de recrutement.
+- `/dashboard/jobs` présente les offres réelles non décidées, leur provenance,
+  leur score et leurs explications. Refuser persiste uniquement la décision ;
+  accepter crée atomiquement une candidature `saved` / `draft`, au plus une
+  fois, sans la présenter comme envoyée.
+- Le tableau de suivi expose l’état de préparation existant et n’affiche
+  « Soumise avec preuve » qu’en présence de preuve. Aucune candidature réelle
+  n’est soumise.
 
-La prochaine verticale prioritaire est le matching déterministe explicable,
-puis la décision accepter/refuser qui crée une candidature `draft` uniquement
-après acceptation.
+La prochaine verticale prioritaire est le Lot C : préparation factuelle des
+éléments, aperçu immuable et approbation invalidable avant toute soumission.

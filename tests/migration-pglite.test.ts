@@ -212,4 +212,37 @@ describe("core migration PostgreSQL compatibility smoke test", () => {
       .rejects.toThrow()
     await db.exec("reset role")
   })
+
+  it("persiste atomiquement les refus et acceptations sans faux envoi", async () => {
+    await db.exec(`
+      set role service_role;
+      insert into public.job_listings (
+        id, provider, external_id, title, company, location, source_url, dedupe_key,
+        source_url_verified_at, source_url_status, is_active, is_demo
+      ) values
+        ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1', 'fixture', 'swipe-skip', 'Skip role', 'Example', 'Remote', 'https://example.test/skip', repeat('c', 64), now(), 200, true, false),
+        ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2', 'fixture', 'swipe-save', 'Save role', 'Example', 'Remote', 'https://example.test/save', repeat('d', 64), now(), 200, true, false);
+      reset role;
+      set role authenticated;
+      set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+    `)
+    const refusal = await db.query<{ result: { decision: string; application_id: string | null } }>(
+      "select public.decide_job('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1', 'skipped') as result",
+    )
+    expect(refusal.rows[0]?.result).toMatchObject({ decision: "skipped", application_id: null })
+    expect((await db.query<{ count: number }>("select count(*)::integer as count from public.applications where job_id='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1'")).rows[0]?.count).toBe(0)
+
+    const accepted = await db.query<{ result: { application_id: string; application_status: string; preparation_state: string } }>(
+      "select public.decide_job('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2', 'saved') as result",
+    )
+    const replay = await db.query<{ result: { application_id: string; replayed: boolean } }>(
+      "select public.decide_job('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2', 'saved') as result",
+    )
+    expect(accepted.rows[0]?.result).toMatchObject({ application_status: "saved", preparation_state: "draft" })
+    expect(replay.rows[0]?.result).toMatchObject({ application_id: accepted.rows[0]?.result.application_id, replayed: true })
+    expect((await db.query<{ count: number }>("select count(*)::integer as count from public.applications where job_id='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2'")).rows[0]?.count).toBe(1)
+    await expect(db.query("select public.decide_job('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2', 'skipped')"))
+      .rejects.toThrow(/immutable/)
+    await db.exec("reset role")
+  })
 })

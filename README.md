@@ -44,8 +44,9 @@ corepack pnpm test:supabase
 
 Les tests SQL nécessitent les conteneurs Supabase locaux. Ils couvrent les RLS,
 l'isolation des CV, les privilèges, le registre de crédits et l'idempotence des
-soumissions. `test:supabase` crée des comptes éphémères et des fichiers PDF/DOCX
-non sensibles, puis les supprime à la fin du test.
+soumissions et décisions. `test:supabase` crée des comptes éphémères, des offres
+de test et des fichiers PDF/DOCX non sensibles, puis les supprime à la fin du
+test.
 
 ## Ingestion locale d'offres réelles
 
@@ -65,10 +66,15 @@ doit conserver son lien source. Voir [`docs/JOB_INGESTION.md`](./docs/JOB_INGEST
 
 - inscription, connexion, déconnexion et renouvellement SSR de session ;
 - routes `/onboarding` et `/dashboard` protégées ;
+- découverte d’offres réelles sur `/dashboard/jobs`, matching explicable et
+  attribution Remote OK ;
+- refus persistant sans candidature et acceptation atomique créant uniquement
+  un brouillon de candidature ;
 - identité, expériences, compétences et préférences ;
 - import privé PDF/DOCX de 10 Mo maximum ;
 - extraction déterministe et correction manuelle des données de CV.
 
-L'extraction ne produit pas de nouvelles qualifications : elle classe le texte
-présent dans le document. Un connecteur d'offres Remote OK est validé localement.
-Aucun adaptateur de candidature réelle n'est encore branché.
+L'extraction et le matching ne produisent pas de nouvelles qualifications : ils
+classent et comparent uniquement les données présentes. Aucun adaptateur de
+candidature réelle n'est encore branché et aucune acceptation n’est présentée
+comme une soumission.
