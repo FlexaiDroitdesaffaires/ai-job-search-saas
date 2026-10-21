@@ -78,7 +78,7 @@ describe("core migration PostgreSQL compatibility smoke test", () => {
     const result = await db.query<{ count: number }>(
       "select count(*)::integer as count from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and obj_description(c.oid, 'pg_class')='app:core_schema_v1'",
     )
-    expect(result.rows[0]?.count).toBe(26)
+    expect(result.rows[0]?.count).toBe(27)
   })
 
   it("ajoute les marqueurs de fraîcheur des offres", async () => {

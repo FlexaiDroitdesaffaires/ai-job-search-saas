@@ -22,6 +22,14 @@ const preparedReplaySql = readFileSync(
   resolve(process.cwd(), "supabase/migrations/20261022050000_decide_job_prepared_replay.sql"),
   "utf8",
 )
+const submissionWorkerSql = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20261023000000_submission_worker.sql"),
+  "utf8",
+)
+const expiredClaimSql = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20261023020000_submission_expired_claim_limit.sql"),
+  "utf8",
+)
 
 describe("core schema safety contract", () => {
   it("couple le statut applied à une soumission confirmée", () => {
@@ -43,6 +51,31 @@ describe("core schema safety contract", () => {
 
   it("limite la vérification RLS aux tables marquées", () => {
     expect(sql).toMatch(/c\.relkind = 'r'[\s\S]{0,160}obj_description\(c\.oid, 'pg_class'\) = 'app:core_schema_v1'/)
+  })
+})
+
+describe("durable submission worker safety contract", () => {
+  it("separates queueing, dispatch and confirmation", () => {
+    expect(submissionWorkerSql).toContain("'queued'")
+    expect(submissionWorkerSql).toContain("mark_application_submission_dispatched")
+    expect(submissionWorkerSql).toContain("validated provider evidence required")
+  })
+
+  it("routes expired post-dispatch claims to reconciliation", () => {
+    expect(submissionWorkerSql).toContain("when external_attempted then 'requires_reconciliation'")
+    expect(submissionWorkerSql).toContain("lease_expired_uncertain")
+  })
+
+  it("keeps TEST confirmations from marking applications submitted", () => {
+    expect(submissionWorkerSql).toContain("if v_submission.environment = 'production'")
+    expect(submissionWorkerSql).toMatch(/else\s+update public\.applications set prep_state = 'approved'/)
+    expect(submissionWorkerSql).toContain("test_confirmation_recorded")
+  })
+
+  it("fails an exhausted pre-dispatch crash instead of stranding the queue", () => {
+    expect(expiredClaimSql).toContain("when attempt_count >= max_attempts then 'failed'")
+    expect(expiredClaimSql).toContain("lease_expired_attempts_exhausted")
+    expect(expiredClaimSql).toMatch(/update public\.applications a\s+set prep_state = 'failed'/)
   })
 })
 

@@ -15,3 +15,6 @@ supabase test db
 `supabase status` avant de l'exécuter. Le fichier `core_schema_test.sql` teste
 les RLS avec deux identités, le stockage privé, les privilèges, les crédits,
 les transitions de candidature et les replays idempotents.
+Il contrôle aussi la présence des RPC réservées au worker et les RLS du journal
+de soumission. Le script projet `corepack pnpm test:db` vérifie strictement le
+plan pgTAP attendu et échoue sur toute assertion `not ok`.

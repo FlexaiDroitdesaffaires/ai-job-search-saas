@@ -126,6 +126,13 @@ de candidature de bout en bout.
   de présélection conserve les verrous JWT sans exiger de droits directs pour
   le rôle Auth.
 
-La prochaine verticale prioritaire est le Lot D : interface d’adaptateur ATS,
-réconciliation des résultats incertains et preuve réelle, sans activer d’envoi
-avant autorisation explicite.
+Le Lot D1 ajoute le contrat d'adaptateur, une file durable avec bail et claim
+atomique, le backoff, la reprise après crash, la réconciliation et un journal
+d'événements. Son unique adaptateur est une fixture strictement locale : ses
+preuves sont marquées `TEST`, exclues des soumissions réelles et ne changent
+jamais l'application en `submitted`.
+
+La prochaine verticale prioritaire est le Lot D2 : obtenir un accès officiel
+sandbox/partenaire auprès d'un ATS, confirmer contractuellement le droit
+d'automatisation et implémenter un premier adaptateur réel. Sans cet accès, le
+produit doit rester en `needs_manual_action` et ne revendiquer aucun envoi.

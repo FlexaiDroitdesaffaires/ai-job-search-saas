@@ -10,11 +10,12 @@
     "supabase:start": "supabase start --exclude studio",
     "supabase:reset": "supabase db reset --local",
     "jobs:ingest:local": "tsx scripts/ingest-remoteok.ts --local",
+    "submissions:worker:local": "tsx scripts/run-submission-worker.ts --local",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "test:db": "node scripts/run-pgtap-local.mjs",
-    "test:supabase": "RUN_SUPABASE_LOCAL=1 vitest run tests/supabase-local.integration.test.ts",
+    "test:supabase": "RUN_SUPABASE_LOCAL=1 vitest run tests/supabase-local.integration.test.ts tests/submission-worker-supabase.integration.test.ts",
     "test:watch": "vitest"
   },
   "dependencies": {

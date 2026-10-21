@@ -52,8 +52,15 @@ réelle de soumission par un adaptateur autorisé, soit un état explicite
 - **Lot C — validé localement :** préparation déterministe, CV et lettre PDF,
   réponses traçables, snapshots SHA-256 immuables et approbation invalidée par
   toute nouvelle version.
-- **Lot D :** adaptateur en bac à sable/fixture contractuelle, puis validation
-  humaine avant toute autorisation d'envoi réel.
+- **Lot D1 — implémenté localement :** contrat standard, worker durable,
+  idempotence, preuves validées, résultats incertains et réconciliation avec
+  une fixture `TEST` sans réseau. Un résultat de fixture ne marque jamais une
+  candidature réelle comme soumise.
+- **Lot D2 :** sélectionner un ATS seulement après accès officiel à son bac à
+  sable et confirmation des droits d'automatisation. Commencer par un employeur
+  pilote consentant ; sinon conserver `needs_manual_action`.
 
 Chaque lot doit avoir ses tests unitaires, ses tests SQL/RLS et un scénario local
 de bout en bout. Stripe, Gmail et les analytics avancés restent hors périmètre.
+L'analyse Lever/Ashby/Greenhouse est dans
+[`ATS_PROVIDER_CANDIDATES.md`](./ATS_PROVIDER_CANDIDATES.md).

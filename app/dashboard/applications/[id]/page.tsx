@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation"
 import { approveApplicationDossier, prepareApplication, saveApplicationDossier } from "../actions"
 import { SubmitButton } from "@/components/submit-button"
 import { applicationDossierSchema } from "@/lib/applications/dossier-schema"
+import { applicationProgress } from "@/lib/applications/status"
 import { requireUser } from "@/lib/supabase/server"
 
 export default async function ApplicationPreparationPage({
@@ -30,11 +31,16 @@ export default async function ApplicationPreparationPage({
   const content = parsed?.success ? parsed.data : null
   const invalidDossier = Boolean(dossierError || (dossier && !parsed?.success))
   const locked = application.prep_state === "submitting" || application.prep_state === "submitted"
+  const { data: submissionRows } = await supabase.from("application_submissions")
+    .select("id,state,environment,provider,attempt_count,error_message,provider_submission_id,tracking_url,started_at,confirmed_at")
+    .eq("application_id", id).order("started_at", { ascending: false }).limit(1)
+  const submission = submissionRows?.[0] ?? null
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl space-y-8 px-4 py-8 sm:px-6 sm:py-12">
       <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm text-muted-foreground">Dossier de candidature</p><h1 className="text-3xl font-semibold">{application.job_title}</h1><p className="mt-1 text-muted-foreground">{application.company}</p></div><Link className="rounded-lg border px-4 py-2 text-sm" href="/dashboard">Retour au suivi</Link></header>
       <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100"><strong>Aucun envoi n’est effectué dans cet écran.</strong> Préparer et approuver figent uniquement les documents locaux.</div>
+      {submission && <section className="space-y-2 rounded-2xl border bg-card p-6"><h2 className="text-xl font-semibold">Traitement technique</h2><p className="font-medium">{applicationProgress({ ...application, submission })}</p>{submission.environment === "test" && <p className="rounded-lg bg-sky-100 p-3 text-sm text-sky-950 dark:bg-sky-950/30 dark:text-sky-100"><strong>TEST local.</strong> Cette ligne ne représente pas une candidature envoyée et doit être exclue des métriques réelles.</p>}<dl className="grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-muted-foreground">Adaptateur</dt><dd>{submission.provider ?? "Non défini"}</dd></div><div><dt className="text-muted-foreground">Tentatives</dt><dd>{submission.attempt_count}</dd></div>{submission.provider_submission_id && <div><dt className="text-muted-foreground">Référence fournisseur</dt><dd>{submission.provider_submission_id}</dd></div>}{submission.tracking_url && <div><dt className="text-muted-foreground">Suivi fournisseur</dt><dd><a className="underline" href={submission.tracking_url} rel="noreferrer" target="_blank">Ouvrir le suivi</a></dd></div>}{submission.error_message && <div><dt className="text-muted-foreground">Diagnostic</dt><dd>{submission.error_message}</dd></div>}</dl></section>}
       {notices.error && <p className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">{notices.error}</p>}
       {notices.saved && <p className="rounded-lg bg-muted p-4 text-sm">{notices.saved}</p>}
       {notices.approved && <p className="rounded-lg bg-emerald-100 p-4 text-sm text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">{notices.approved}</p>}

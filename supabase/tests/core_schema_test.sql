@@ -1,12 +1,18 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(34);
 
 select has_table('public', 'applications', 'applications existe');
 select has_table('public', 'application_submissions', 'journal de soumission existe');
 select ok((select relrowsecurity from pg_class where oid = 'public.applications'::regclass), 'RLS applications active');
 select ok((select relrowsecurity from pg_class where oid = 'public.application_submissions'::regclass), 'RLS soumissions active');
 select ok(exists(select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'resumes_owner_insert'), 'politique stockage CV présente');
+select has_table('public', 'application_submission_events', 'historique worker existe');
+select ok((select relrowsecurity from pg_class where oid = 'public.application_submission_events'::regclass), 'RLS historique worker active');
+select ok(to_regprocedure('public.enqueue_application_submission(uuid,uuid,text,text,text,text,smallint)') is not null, 'enqueue durable existe');
+select ok(to_regprocedure('public.claim_application_submission(text,integer)') is not null, 'claim atomique existe');
+select ok(to_regprocedure('public.finish_application_submission_attempt(uuid,text,text,text,text,jsonb,text,integer,boolean)') is not null, 'finalisation contrôlée existe');
+select ok(to_regprocedure('public.finish_application_reconciliation(uuid,text,text,text,text,jsonb,text,integer,integer)') is not null, 'réconciliation durable existe');
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,

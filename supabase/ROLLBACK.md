@@ -60,3 +60,21 @@ La migration `20261022050000_decide_job_prepared_replay.sql` conserve
 l’idempotence de l’acceptation lorsque la candidature a déjà progressé : le
 replay retourne l’état courant sans le ramener en brouillon. Revenir à la
 fonction antérieure ferait échouer les retries après préparation.
+
+La migration `20261023000000_submission_worker.sql` étend sans supprimer les
+soumissions existantes, ajoute le journal d'événements et remplace les RPC de
+cycle de vie par une file à claims. Les dossiers approuvés et l'historique sont
+des éléments de preuve : aucun rollback destructif n'est fourni. Une transition
+arrière devrait d'abord arrêter tous les workers puis préserver et exporter les
+soumissions actives et leurs événements.
+
+La correction `20261023010000_submission_retry_claim.sql` autorise un claim de
+retry seulement quand la soumission est `retry_scheduled` et l'application
+reste `submitting`. La retirer ferait classer à tort ces retries comme dossiers
+obsolètes ; elle ne modifie ni ne supprime aucune donnée à l'application.
+
+La correction `20261023020000_submission_expired_claim_limit.sql` clôt en échec
+un claim pré-envoi expiré qui a atteint sa limite, au lieu de laisser un retry
+intraitable. Une expiration après début d'envoi reste toujours incertaine et
+part en réconciliation. Cette migration ne modifie aucune ligne lors de son
+installation ; elle remplace uniquement la fonction de claim.

@@ -100,12 +100,40 @@ validation visuelle manuelle n’est donc revendiquée.
   validée via GoTrue après correction additive des références documentaires et
   du trigger de présélection ; nettoyage final strict sans fixture résiduelle.
 
+## Validation moteur de soumission — 2026-10-21
+
+- migrations locales `20261023000000_submission_worker`,
+  `20261023010000_submission_retry_claim` et
+  `20261023020000_submission_expired_claim_limit` appliquées sans reset et
+  listées sur PostgreSQL `127.0.0.1` ; aucun projet Supabase Cloud contacté ;
+- pgTAP : 34/34 assertions réussies, incluant RPC worker, RLS du journal,
+  intégrité des soumissions, isolation utilisateur et crédits atomiques ;
+- tests standards : 61 réussis et 6 tests d'intégration opt-in ignorés ;
+- intégration Supabase réelle locale : 6/6 scénarios réussis sur deux suites ;
+- double enqueue et deux workers concurrents : une seule soumission et une
+  seule confirmation `TEST` ;
+- retry réseau avant effet externe, épuisement après crash pré-envoi, crash
+  après dispatch, expiration de claim et réconciliation positive vérifiés ;
+- dossier modifié après approbation et preuve métier invalide rejetés ;
+- preuve `TEST` confirmée sans passage de l'application à `submitted` et sans
+  création de preuve réelle ;
+- lanceur sans `--local` refusé ; cycle `--once` local réussi sans ligne à
+  traiter et sans appel externe ;
+- TypeScript, lint et build de production réussis ;
+- nettoyage final : 0 compte `@example.test`, 0 soumission et 0 événement de
+  test ; les 5 offres Remote OK locales antérieures sont préservées.
+
+Les scénarios de double clic sont couverts par le replay atomique de l'enqueue ;
+la concurrence par deux appels de claim simultanés. Les simulations D1 ne sont
+pas des validations contre un ATS réel. Aucun statut, identifiant ou suivi
+externe réel n'est revendiqué.
+
 ## Particularité de l'environnement
 
 Docker Desktop refuse les bind mounts depuis ce dossier `Documents`. Studio est
 donc exclu et le test pgTAP est envoyé à `psql` via l'entrée standard du
 conteneur local. Cela ne réduit pas la couverture SQL ; le script vérifie le
-plan `1..28`, les 28 lignes `ok` et l'absence de `not ok`.
+plan `1..34`, les 34 lignes `ok` et l'absence de `not ok`.
 
 Les résultats courants se reproduisent avec :
 

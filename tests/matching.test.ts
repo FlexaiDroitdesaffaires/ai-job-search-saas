@@ -97,10 +97,21 @@ describe("application progress labels", () => {
   it.each([
     ["draft", "Préparation à effectuer"],
     ["ready_for_review", "En cours de préparation"],
-    ["approved", "Approuvée"],
+    ["approved", "Dossier approuvé"],
     ["needs_manual_action", "Intervention nécessaire"],
-    ["failed", "Échec"],
+    ["failed", "Échec confirmé"],
   ])("maps %s to %s", (prepState, label) => {
     expect(applicationProgress({ prep_state: prepState })).toBe(label)
+  })
+
+  it("keeps local test confirmations distinct from real submissions", () => {
+    expect(applicationProgress({
+      prep_state: "approved",
+      submission: { state: "confirmed", environment: "test" },
+    })).toBe("Test local confirmé — aucune candidature réelle")
+    expect(applicationProgress({
+      prep_state: "submitting",
+      submission: { state: "requires_reconciliation", environment: "production" },
+    })).toBe("Résultat incertain")
   })
 })

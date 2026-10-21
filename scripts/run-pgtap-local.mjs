@@ -18,8 +18,8 @@ const output = result.stdout ?? ""
 const planned = output.match(/\b1\.\.(\d+)\b/)?.[1]
 const passed = output.match(/^\s*ok \d+ - /gm)?.length ?? 0
 const failed = output.match(/^\s*not ok \d+ - /gm)?.length ?? 0
-if (planned !== "28" || passed !== 28 || failed !== 0) {
+if (planned !== "34" || passed !== 34 || failed !== 0) {
   throw new Error(`pgTAP failed: plan=${planned ?? "missing"}, passed=${passed}, failed=${failed}`)
 }
 
-console.log("pgTAP summary: 28/28 assertions passed")
+console.log("pgTAP summary: 34/34 assertions passed")
