@@ -95,7 +95,7 @@ de candidature de bout en bout.
 - Auth, sessions SSR, onboarding, stockage privé PDF/DOCX et extraction
   déterministe sont opérationnels et testés localement.
 - Les invariants de soumission, l'idempotence, les crédits atomiques et les RLS
-  passent les 28 assertions pgTAP et les tests d'intégration locaux.
+  passent les 34 assertions pgTAP et les tests d'intégration locaux.
 - Le premier connecteur réel ingère des offres Remote OK dans
   `job_listings`. Il vérifie fraîcheur et URL, conserve la provenance, calcule
   une clé de regroupement et rejoue par `(provider, external_id)` sans doublon.
@@ -132,7 +132,23 @@ d'événements. Son unique adaptateur est une fixture strictement locale : ses
 preuves sont marquées `TEST`, exclues des soumissions réelles et ne changent
 jamais l'application en `submitted`.
 
-La prochaine verticale prioritaire est le Lot D2 : obtenir un accès officiel
-sandbox/partenaire auprès d'un ATS, confirmer contractuellement le droit
-d'automatisation et implémenter un premier adaptateur réel. Sans cet accès, le
-produit doit rester en `needs_manual_action` et ne revendiquer aucun envoi.
+L’ingestion unifiée ajoute AI Dev Jobs à Remote OK. L’instance locale contient
+29 offres issues de ces deux sources réelles (5 + 24), récentes, HTTPS et sans
+doublon fournisseur. Quinze pointent vers Greenhouse ou Ashby, mais aucune
+n’est classée automatiquement soumettable faute d’autorisation employeur. Les
+décisions sont sérialisées sur `dedupe_key` entre sources.
+
+ScrapeGraphAI open source est un **NO-GO** dans l’environnement évalué : Python
+3.12 résout une version importable, mais la première extraction Ollama locale
+dépasse l’enveloppe du pilote. L’API officielle a fourni 19 offres complètes
+sur 20, contre 0 pour HTML/JSON-LD. Aucune dépendance ScrapeGraphAI n’est
+ajoutée au produit.
+
+Le Lot D2 possède un adaptateur Greenhouse préparatoire : détection de cible,
+lecture du formulaire officiel, mapping factuel, texte du CV et de la lettre,
+contrôle des champs/consentements obligatoires, allowlist employeur et résultat
+incertain sur simple HTTP 2xx. Il reste volontairement inéligible au worker D1,
+car l’API publique ne documente ni idempotence, ni identifiant de confirmation,
+ni réconciliation. La prochaine étape est d’obtenir un accord employeur, une
+clé Job Board sandbox et un contrat de preuve/idempotence ; sans eux, le
+parcours reste manuel et ne revendique aucun envoi.

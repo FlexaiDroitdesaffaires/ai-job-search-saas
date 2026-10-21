@@ -128,6 +128,30 @@ la concurrence par deux appels de claim simultanés. Les simulations D1 ne sont
 pas des validations contre un ATS réel. Aucun statut, identifiant ou suivi
 externe réel n'est revendiqué.
 
+## Validation sources unifiées et préparation D2 — 2026-10-21
+
+- migration `20261024000000_unified_job_sources` appliquée et listée uniquement
+  sur PostgreSQL local `127.0.0.1`, sans reset et sans projet lié ;
+- 5 offres Remote OK antérieures préservées et 24 offres AI Dev Jobs réelles
+  persistées sur un lot de 25 ; une URL employeur réellement `404` exclue ;
+- 29 offres réelles totales, aucune URL source non HTTPS, aucune offre AI Dev
+  de plus de 45 jours et aucun doublon `(provider, external_id)` ;
+- candidabilité AI Dev : 15 `unknown` vers ATS (9 Ashby, 6 Greenhouse) et 9
+  `manual_required` ; 0 `automatic_authorized` faute d’accord employeur ;
+- replay d’acceptation entre deux lignes partageant le même `dedupe_key` : une
+  décision canonique et une seule candidature ; RLS et persistance couvertes
+  dans la suite Supabase ;
+- tests standards : 74 réussis, 6 intégrations opt-in ignorées ; intégration
+  Supabase locale : 6/6 ; pgTAP : 34/34 ;
+- TypeScript, lint, build de production et `git diff --check` réussis ;
+- adaptateur Greenhouse testé uniquement avec transport mocké : lecture des
+  questions, payload stable et factuel, CV/lettre en texte officiel, blocage
+  des obligations manquantes, résultat HTTP 200 maintenu `uncertain` ;
+- aucun POST ATS réel, aucune preuve réelle et aucun statut `submitted` créé.
+
+Le pilote ScrapeGraphAI est documenté dans `SCRAPEGRAPH_PILOT.md` et conclu
+**NO-GO**. Il n’a ajouté aucune dépendance au projet Next.js.
+
 ## Particularité de l'environnement
 
 Docker Desktop refuse les bind mounts depuis ce dossier `Documents`. Studio est
