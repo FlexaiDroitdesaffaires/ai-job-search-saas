@@ -48,13 +48,23 @@ partenaire ou l'onboarding explicite d'employeurs avant un premier envoi réel.
 - Autorisation : la documentation positionne l'API pour les sites carrière et
   intégrations partenaires de l'employeur. L'automatisation B2C ne doit pas être
   supposée autorisée sans accord explicite.
-- Confirmation : il faudra qualifier précisément le corps de réponse et une
-  éventuelle référence récupérable avant de définir la preuve D2.
+- Confirmation : la documentation publique ne définit ni identifiant de
+  candidature dans la réponse, ni endpoint de consultation/réconciliation, ni
+  clé d’idempotence pour le POST Job Board. Un HTTP 2xx reste donc incertain.
 - Faisabilité B2C : faible sans employeur/partenaire connecté ; pertinente pour
   un pilote avec une organisation consentante.
 - Sources : [aperçu officiel des API Greenhouse](https://support.greenhouse.io/hc/en-us/articles/10568627186203-Greenhouse-API-overview),
-  [création d'une clé API](https://support.greenhouse.io/hc/en-us/articles/202842799-Create-an-API-key-in-Greenhouse-Recruiting)
-  et [ressources développeur](https://developers.greenhouse.io/).
+  [création d'une clé Job Board](https://support.greenhouse.io/hc/en-us/articles/13446638483355-Create-a-job-board-API-key-for-an-integration)
+  et [Job Board API](https://docs.greenhouse.io/job-board.html).
+
+Un adaptateur de préparation est présent dans
+`lib/submissions/greenhouse-adapter.ts`. Il exige l’identifiant d’autorisation
+employeur, une allowlist de jobs et une clé conservée côté serveur. Il n’est pas
+enregistré dans le worker : `supportsIdempotencyKey=false` et
+`canVerifyConfirmation=false` empêchent D1 de l’enqueue. Ses tests utilisent
+uniquement un transport mocké. Il lit les questions officielles, bloque les
+champs et consentements obligatoires absents, prépare les champs texte du CV et
+de la lettre, et vérifie qu’un HTTP 200 reste `uncertain`.
 
 ## Critère de choix D2
 

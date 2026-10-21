@@ -68,3 +68,18 @@ corepack pnpm submissions:worker:local -- --once --scenario=confirmed
 
 Le script traite seulement une soumission déjà mise en file. Il ne crée pas
 d'autorisation utilisateur et ne transforme pas un dossier non approuvé.
+
+## Préparation Greenhouse — Lot D2
+
+`GreenhouseAdapter` réutilise le contrat D1 sans être enregistré dans le
+worker. Il reconnaît uniquement les URL de board Greenhouse explicitement
+autorisées, charge le formulaire public `?questions=true`, mappe les données
+confirmées du dossier et prépare `resume_text` / `cover_letter_text`. Une
+empreinte du formulaire fait partie du payload préparé.
+
+Une question, une donnée de localisation cachée ou un consentement obligatoire
+absent bloque la préparation. La clé Job Board reste côté serveur. Même avec
+une clé et une allowlist, l’adaptateur expose `supportsIdempotencyKey=false` et
+`canVerifyConfirmation=false` : D1 refuse donc de l’enqueue. Un HTTP 2xx serait
+enregistré comme résultat incertain, jamais comme preuve. Aucun POST externe
+n’est activé ou exécuté dans ce lot.
