@@ -20,6 +20,10 @@ export type DiscoverableJob = {
   source_url: string
   provider: string
   posted_at: string | null
+  dedupe_key: string
+  application_mode: string
+  application_provider: string | null
+  application_reason: string | null
   match: MatchResult
 }
 
@@ -83,7 +87,10 @@ export function JobDeck({ initialJobs }: { initialJobs: DiscoverableJob[] }) {
           <span className="rounded-full bg-muted px-3 py-1"><MapPin className="mr-1 inline size-4" />{job.location || job.country || "Localisation inconnue"}</span>
           <span className="rounded-full bg-muted px-3 py-1">{job.work_mode === "remote" ? "Télétravail" : job.work_mode ?? "Mode non précisé"}</span>
           <span className="rounded-full bg-muted px-3 py-1">{salary(job)}</span>
+          <span className="rounded-full bg-muted px-3 py-1">{applicationLabel(job.application_mode)}</span>
         </div>
+
+        {job.application_reason && <p className="text-sm text-muted-foreground">Candidabilité : {job.application_reason}</p>}
 
         <p className="max-h-56 overflow-y-auto whitespace-pre-line text-sm leading-6 text-muted-foreground">{job.description || "Description non fournie par la source."}</p>
 
@@ -96,7 +103,7 @@ export function JobDeck({ initialJobs }: { initialJobs: DiscoverableJob[] }) {
 
         <footer className="flex flex-wrap items-center justify-between gap-4 border-t pt-5">
           <div className="text-sm text-muted-foreground">
-            <a className="font-medium underline underline-offset-4" href={job.source_url} rel="noopener noreferrer" target="_blank">Source : {job.provider === "remoteok" ? "Remote OK" : job.provider} <ExternalLink className="inline size-3" /></a>
+            <a className="font-medium underline underline-offset-4" href={job.source_url} rel="noopener noreferrer" target="_blank">Source : {sourceLabel(job.provider)} <ExternalLink className="inline size-3" /></a>
             <p>{job.posted_at ? `Publiée le ${new Intl.DateTimeFormat("fr-FR").format(new Date(job.posted_at))}` : "Date de publication inconnue"}</p>
           </div>
           <div className="flex gap-3">
@@ -108,6 +115,19 @@ export function JobDeck({ initialJobs }: { initialJobs: DiscoverableJob[] }) {
       </article>
     </div>
   )
+}
+
+function sourceLabel(provider: string) {
+  if (provider === "remoteok") return "Remote OK"
+  if (provider === "aidevjobs") return "AI Dev Jobs"
+  return provider
+}
+
+function applicationLabel(mode: string) {
+  if (mode === "automatic_authorized") return "Soumission automatique autorisée"
+  if (mode === "manual_required") return "Soumission manuelle nécessaire"
+  if (mode === "closed_invalid") return "Offre fermée ou invalide"
+  return "Compatibilité de soumission inconnue"
 }
 
 function Explanation({ title, items, empty }: { title: string; items: string[]; empty: string }) {

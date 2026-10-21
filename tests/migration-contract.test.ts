@@ -30,6 +30,10 @@ const expiredClaimSql = readFileSync(
   resolve(process.cwd(), "supabase/migrations/20261023020000_submission_expired_claim_limit.sql"),
   "utf8",
 )
+const unifiedSourcesSql = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20261024000000_unified_job_sources.sql"),
+  "utf8",
+)
 
 describe("core schema safety contract", () => {
   it("couple le statut applied à une soumission confirmée", () => {
@@ -94,6 +98,12 @@ describe("matching and swipe safety contract", () => {
   it("creates only a saved draft when accepting", () => {
     expect(matchingSql).toMatch(/'saved',\s*'draft'/)
     expect(matchingSql).not.toMatch(/insert into public\.applications[\s\S]*?'applied'/)
+  })
+
+  it("serializes one decision across duplicate source rows", () => {
+    expect(unifiedSourcesSql).toContain("pg_advisory_xact_lock")
+    expect(unifiedSourcesSql).toContain("existing.dedupe_key = v_job.dedupe_key")
+    expect(unifiedSourcesSql).toContain("Job decision is immutable across duplicate sources")
   })
 })
 

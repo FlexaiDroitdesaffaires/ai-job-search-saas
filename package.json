@@ -10,6 +10,7 @@
     "supabase:start": "supabase start --exclude studio",
     "supabase:reset": "supabase db reset --local",
     "jobs:ingest:local": "tsx scripts/ingest-remoteok.ts --local",
+    "jobs:ingest:aidevjobs:local": "tsx scripts/ingest-aidevjobs.ts --local",
     "submissions:worker:local": "tsx scripts/run-submission-worker.ts --local",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",

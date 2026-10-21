@@ -193,7 +193,7 @@ describe.runIf(enabled)("Supabase local integration", () => {
     cleanup.push(() => deleteTestUser(service, first.id))
     cleanup.push(() => deleteTestUser(service, second.id))
 
-    const jobIds = [randomUUID(), randomUUID(), randomUUID()]
+    const jobIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()]
     const { error: fixtureError } = await service.from("job_listings").insert(jobIds.map((id, index) => ({
       id,
       provider: "local-test",
@@ -203,7 +203,7 @@ describe.runIf(enabled)("Supabase local integration", () => {
       location: "Remote",
       work_mode: "remote",
       source_url: `https://example.test/jobs/${id}`,
-      dedupe_key: id.replaceAll("-", ""),
+      dedupe_key: index === 3 ? jobIds[1].replaceAll("-", "") : id.replaceAll("-", ""),
       source_url_verified_at: new Date().toISOString(),
       source_url_status: 200,
       is_active: true,
@@ -222,6 +222,9 @@ describe.runIf(enabled)("Supabase local integration", () => {
     expect(accepted.error).toBeNull()
     expect(accepted.data).toMatchObject({ application_status: "saved", preparation_state: "draft" })
     expect(replay.data).toMatchObject({ application_id: accepted.data.application_id, replayed: true })
+    const crossSourceReplay = await userOne.rpc("decide_job", { p_job_id: jobIds[3], p_decision: "saved" })
+    expect(crossSourceReplay.error).toBeNull()
+    expect(crossSourceReplay.data).toMatchObject({ application_id: accepted.data.application_id, replayed: true, canonical_job_id: jobIds[1] })
 
     const concurrent = await Promise.all([
       userOne.rpc("decide_job", { p_job_id: jobIds[2], p_decision: "saved" }),

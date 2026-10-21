@@ -12,7 +12,11 @@ export async function verifyJobUrl(url: string, fetcher: typeof fetch = fetch): 
     if (response.status === 403 || response.status === 405) {
       response = await fetcher(url, { ...options, method: "GET", headers: { ...options.headers, Range: "bytes=0-0" } })
     }
-    if (response.status < 200 || response.status >= 400) return null
+    // Some employer career sites deliberately reject automated requests while
+    // still proving that the HTTPS endpoint exists. Preserve those URLs with
+    // their restricted status; callers must not treat 401/403 as an open-job
+    // confirmation. Definitive not-found and server failures remain invalid.
+    if ((response.status < 200 || response.status >= 400) && response.status !== 401 && response.status !== 403) return null
     const finalUrl = new URL(response.url || url)
     if (finalUrl.protocol !== "https:") return null
     return { status: response.status, verifiedAt: new Date() }

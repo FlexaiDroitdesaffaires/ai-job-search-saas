@@ -36,6 +36,13 @@ export class SupabaseJobListingRepository implements JobListingRepository {
       description: job.description ?? null,
       requirements: job.requirements,
       source_url: job.sourceUrl,
+      application_url: job.applicationUrl ?? null,
+      application_mode: job.applicationMode ?? "unknown",
+      application_provider: job.applicationProvider ?? null,
+      application_external_id: job.applicationExternalId ?? null,
+      application_reason: job.applicationReason ?? null,
+      source_status: job.sourceStatus ?? "unknown",
+      expires_at: job.expiresAt ?? null,
       posted_at: job.postedAt,
       dedupe_key: job.dedupeKey,
       is_demo: false,
@@ -43,6 +50,8 @@ export class SupabaseJobListingRepository implements JobListingRepository {
       last_seen_at: job.lastSeenAt,
       source_url_verified_at: job.sourceUrlVerifiedAt,
       source_url_status: job.sourceUrlStatus,
+      application_url_verified_at: job.applicationUrlVerifiedAt ?? null,
+      application_url_status: job.applicationUrlStatus ?? null,
     }))
     const { error: writeError } = await this.supabase
       .from("job_listings")

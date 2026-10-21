@@ -15,8 +15,8 @@ export default async function JobsPage() {
     supabase.from("skills").select("name").order("name"),
     supabase.from("career_experiences").select("title,description").order("start_date", { ascending: false }),
     supabase.from("job_preferences").select("target_titles,countries,cities,work_modes,salary_min,salary_currency,employment_types,seniority").eq("user_id", user.id).maybeSingle(),
-    supabase.from("job_listings").select("id,title,company,location,country,work_mode,employment_type,seniority,salary_min,salary_max,salary_currency,description,requirements,source_url,provider,posted_at").eq("is_active", true).eq("is_demo", false).not("source_url", "is", null).order("posted_at", { ascending: false }).limit(100),
-    supabase.from("saved_jobs").select("job_id"),
+    supabase.from("job_listings").select("id,title,company,location,country,work_mode,employment_type,seniority,salary_min,salary_max,salary_currency,description,requirements,source_url,provider,posted_at,dedupe_key,application_mode,application_provider,application_reason").eq("is_active", true).eq("is_demo", false).neq("application_mode", "closed_invalid").not("source_url", "is", null).order("posted_at", { ascending: false }).limit(100),
+    supabase.from("saved_jobs").select("job_id,job_listings(dedupe_key)"),
   ])
 
   const failure = [profileResult, skillsResult, experiencesResult, preferencesResult, jobsResult, decisionsResult].find((result) => result.error)
@@ -42,8 +42,9 @@ export default async function JobsPage() {
       seniority: preferences.seniority,
     } : null,
   }
-  const decided = new Set((decisionsResult.data ?? []).map((item) => item.job_id))
-  const jobs = (jobsResult.data ?? []).map((row) => {
+  const decided = new Set((decisionsResult.data ?? []).map((item) => item.job_listings?.[0]?.dedupe_key).filter(Boolean))
+  const canonicalJobs = [...new Map((jobsResult.data ?? []).map((row) => [row.dedupe_key, row])).values()]
+  const jobs = canonicalJobs.map((row) => {
     const matchable: MatchableJob = {
       id: row.id, title: row.title, location: row.location, country: row.country,
       workMode: row.work_mode, employmentType: row.employment_type, seniority: row.seniority,
@@ -71,7 +72,7 @@ export default async function JobsPage() {
   }
 
   const visibleJobs: DiscoverableJob[] = jobs
-    .filter(({ row }) => !decided.has(row.id))
+    .filter(({ row }) => !decided.has(row.dedupe_key))
     .sort((a, b) => b.match.score - a.match.score || a.row.id.localeCompare(b.row.id))
     .map(({ row, match }) => ({ ...row, source_url: row.source_url!, match }))
 

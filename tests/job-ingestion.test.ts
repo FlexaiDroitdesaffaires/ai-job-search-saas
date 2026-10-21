@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest"
 
 import { ingestJobs } from "@/lib/jobs/ingest"
 import { jobDedupeKey } from "@/lib/jobs/normalize"
+import { classifyApplicationRoute } from "@/lib/jobs/candidability"
+import { jobSourceRegistry } from "@/lib/jobs/source-registry"
+import { parseAiDevJobsRecord } from "@/lib/jobs/sources/aidevjobs"
 import { parseRemoteOkRecord, plainTextDescription } from "@/lib/jobs/sources/remoteok"
 import type { JobListingRepository, SourceJob, VerifiedJob } from "@/lib/jobs/types"
+import { verifyJobUrl } from "@/lib/jobs/verify-url"
 
 const sourceJob: SourceJob = {
   provider: "remoteok",
@@ -103,5 +107,48 @@ describe("job ingestion", () => {
     expect(await ingestJobs(options)).toMatchObject({ inserted: 1, updated: 0 })
     expect(await ingestJobs(options)).toMatchObject({ inserted: 0, updated: 1 })
     expect(repository.rows).toHaveLength(1)
+  })
+
+  it("normalise AI Dev Jobs et détecte l’ATS sans autoriser automatiquement", () => {
+    const job = parseAiDevJobsRecord({
+      id: "ai-1", title: "AI Engineer", company_name: "Example AI",
+      description: "Build reliable AI systems.", location: "Paris, France",
+      workplace: "remote", remote_scope: "restricted", job_type: "full-time",
+      experience_level: "senior", tags: ["python", "llm"], salary_min: 90_000,
+      salary_max: 120_000, apply_url: "https://job-boards.greenhouse.io/example/jobs/12345",
+      url: "https://aidevboard.com/job/ai-1", status: "active",
+      published_at: "2026-10-20T12:00:00Z", expires_at: "2026-11-20T12:00:00Z",
+    })
+    expect(job).toMatchObject({ provider: "aidevjobs", employmentType: "full_time", seniority: "senior" })
+    expect(classifyApplicationRoute(job!)).toMatchObject({ mode: "unknown", provider: "greenhouse", externalId: "12345" })
+  })
+
+  it("classe sans inventer d’autorisation et ferme les offres expirées", () => {
+    expect(classifyApplicationRoute({ applicationUrl: "https://jobs.ashbyhq.com/acme/role/application" }))
+      .toMatchObject({ mode: "unknown", provider: "ashby" })
+    expect(classifyApplicationRoute({ applicationUrl: "https://company.example/careers/1" }))
+      .toMatchObject({ mode: "manual_required" })
+    expect(classifyApplicationRoute({ sourceStatus: "closed" }))
+      .toMatchObject({ mode: "closed_invalid" })
+  })
+
+  it("conserve uniquement les sources compatibles avec le produit", () => {
+    expect(jobSourceRegistry.filter((source) => source.decision === "active").map((source) => source.id))
+      .toEqual(["remoteok", "aidevjobs"])
+    expect(jobSourceRegistry.find((source) => source.id === "weworkremotely")?.decision).toBe("blocked")
+  })
+
+  it("conserve une URL employeur protégée sans la déclarer ouverte", async () => {
+    const fetcher = async () => new Response(null, {
+      status: 403,
+      headers: { location: "https://company.example/jobs/1" },
+    })
+    const verification = await verifyJobUrl("https://company.example/jobs/1", fetcher as typeof fetch)
+    expect(verification?.status).toBe(403)
+  })
+
+  it("rejette une URL de candidature définitivement absente", async () => {
+    const fetcher = async () => new Response(null, { status: 404 })
+    await expect(verifyJobUrl("https://company.example/jobs/missing", fetcher as typeof fetch)).resolves.toBeNull()
   })
 })

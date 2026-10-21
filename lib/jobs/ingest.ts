@@ -24,6 +24,7 @@ export async function ingestJobs({
     normalized: 0,
     stale: 0,
     invalidUrl: 0,
+    invalidApplicationUrl: 0,
     duplicateInBatch: 0,
     inserted: 0,
     updated: 0,
@@ -50,16 +51,23 @@ export async function ingestJobs({
   const verified = []
   for (let offset = 0; offset < candidates.length; offset += 5) {
     const batch = candidates.slice(offset, offset + 5)
-    const checks = await Promise.all(batch.map(async (job) => ({
-      job,
-      verification: await verifyUrl(job.sourceUrl),
-    })))
-    for (const { job, verification } of checks) {
+    const checks = await Promise.all(batch.map(async (job) => {
+      const verification = await verifyUrl(job.sourceUrl)
+      const applicationVerification = job.applicationUrl && job.applicationUrl !== job.sourceUrl
+        ? await verifyUrl(job.applicationUrl)
+        : verification
+      return { job, verification, applicationVerification }
+    }))
+    for (const { job, verification, applicationVerification } of checks) {
       if (!verification) {
         result.invalidUrl += 1
         continue
       }
-      verified.push(verifiedJob(job, verification, now))
+      if (job.applicationUrl && !applicationVerification) {
+        result.invalidApplicationUrl += 1
+        continue
+      }
+      verified.push(verifiedJob(job, verification, applicationVerification ?? undefined, now))
     }
   }
 
