@@ -70,6 +70,13 @@ describe("Greenhouse adapter preparation", () => {
     const second = await instance.preparePayload(pkg)
     expect(first).toEqual(second)
     expect(first.payload).toMatchObject({ fields: { first_name: "Candidate", last_name: "Test", email: "candidate@example.test", question_42: "Yes" } })
+    const fields = first.payload.fields as Record<string, string>
+    expect(fields.resume_content_filename).toBe("resume.pdf")
+    expect(fields.cover_letter_content_filename).toBe("cover-letter.pdf")
+    expect(Buffer.from(fields.resume_content, "base64").subarray(0, 4).toString()).toBe("%PDF")
+    expect(Buffer.from(fields.cover_letter_content, "base64").subarray(0, 4).toString()).toBe("%PDF")
+    expect(fields.resume_text).toBeUndefined()
+    expect(fields.cover_letter_text).toBeUndefined()
     expect(JSON.stringify(first.payload)).not.toContain("invented")
   })
 

@@ -6,6 +6,9 @@ const PAGE = { width: 595.28, height: 841.89, margin: 48 }
 
 function pdfSafe(value: string) {
   return value
+    .replace(/\u00e2\u0080[\u0098\u0099]/g, "'")
+    .replace(/\u00e2\u0080[\u009c\u009d]/g, '"')
+    .replace(/\u00e2\u0080[\u0093\u0094]/g, "-")
     .replace(/[–—]/g, "-")
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
@@ -14,7 +17,15 @@ function pdfSafe(value: string) {
 
 function wrap(text: string, font: PDFFont, size: number, width: number) {
   const lines: string[] = []
-  for (const paragraph of pdfSafe(text).split("\n")) {
+  const encodable = [...pdfSafe(text)].map((character) => {
+    try {
+      font.encodeText(character)
+      return character
+    } catch {
+      return "?"
+    }
+  }).join("")
+  for (const paragraph of encodable.split("\n")) {
     if (!paragraph.trim()) {
       lines.push("")
       continue
@@ -89,6 +100,9 @@ class PdfWriter {
 
 async function documentWriter() {
   const document = await PDFDocument.create()
+  const deterministicDate = new Date(0)
+  document.setCreationDate(deterministicDate)
+  document.setModificationDate(deterministicDate)
   const regular = await document.embedFont(StandardFonts.Helvetica)
   const bold = await document.embedFont(StandardFonts.HelveticaBold)
   return { document, writer: new PdfWriter(document, regular, bold) }

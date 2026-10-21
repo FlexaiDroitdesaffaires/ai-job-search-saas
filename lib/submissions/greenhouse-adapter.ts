@@ -1,4 +1,5 @@
 import { canonicalJson, sha256Hex } from "@/lib/applications/hash"
+import { generateCoverLetterPdf, generateResumePdf } from "@/lib/applications/pdf"
 
 import type {
   AdapterCapabilities,
@@ -9,7 +10,7 @@ import type {
   SubmitResult,
 } from "./adapter"
 
-type GreenhouseConfig = {
+export type GreenhouseConfig = {
   boardToken: string
   apiKey?: string
   employerAuthorizationId: string
@@ -92,7 +93,11 @@ export class GreenhouseAdapter implements AtsAdapter {
   async preparePayload(pkg: ApprovedApplicationPackage): Promise<PreparedSubmission> {
     const target = parseGreenhouseTarget(pkg.targetUrl)
     if (!target) throw new Error("GREENHOUSE_TARGET_INVALID")
-    const form = await this.loadForm(target)
+    const [form, resumePdf, coverLetterPdf] = await Promise.all([
+      this.loadForm(target),
+      generateResumePdf(pkg.content),
+      generateCoverLetterPdf(pkg.content),
+    ])
     const { firstName, lastName } = splitName(pkg.content.resume.fullName)
     const payload: Record<string, unknown> = {
       first_name: firstName,
@@ -100,8 +105,10 @@ export class GreenhouseAdapter implements AtsAdapter {
       email: pkg.content.resume.contact.email,
       phone: pkg.content.resume.contact.phone || undefined,
       location: pkg.content.resume.contact.location || undefined,
-      resume_text: factualResumeText(pkg),
-      cover_letter_text: pkg.content.coverLetter.body,
+      resume_content: Buffer.from(resumePdf).toString("base64"),
+      resume_content_filename: "resume.pdf",
+      cover_letter_content: Buffer.from(coverLetterPdf).toString("base64"),
+      cover_letter_content_filename: "cover-letter.pdf",
     }
     for (const answer of pkg.content.screeningAnswers) {
       const field = this.config.fieldMappings?.[answer.key]
@@ -199,18 +206,6 @@ function splitName(fullName: string) {
     : { firstName: parts[0], lastName: parts.slice(1).join(" ") }
 }
 
-function factualResumeText(pkg: ApprovedApplicationPackage) {
-  const resume = pkg.content.resume
-  return [
-    resume.fullName,
-    resume.title,
-    resume.summary,
-    resume.skills.length ? `Skills: ${resume.skills.map((skill) => skill.name).join(", ")}` : "",
-    ...resume.experiences.map((experience) => [experience.title, experience.company, experience.period, experience.description].filter(Boolean).join(" — ")),
-    ...resume.education.map((education) => education.text),
-  ].filter(Boolean).join("\n\n")
-}
-
 function basicToken(apiKey: string) {
   return Buffer.from(`${apiKey}:`, "utf8").toString("base64")
 }
@@ -248,10 +243,15 @@ function parseRequiredCompliance(value: unknown) {
 
 function missingRequiredFields(form: GreenhouseForm, payload: Record<string, unknown>) {
   const missing: string[] = []
-  const aliases: Record<string, string> = { resume: "resume_text", cover_letter: "cover_letter_text" }
+  const aliases: Record<string, string[]> = {
+    resume: ["resume_content", "resume_url", "resume_text"],
+    cover_letter: ["cover_letter_content", "cover_letter_url", "cover_letter_text"],
+  }
   for (const question of [...form.questions, ...form.locationQuestions]) {
     if (!question.required) continue
-    const answered = question.fields.some((field) => hasValue(payload[field.name]) || hasValue(payload[aliases[field.name]]))
+    const answered = question.fields.some((field) =>
+      hasValue(payload[field.name]) || (aliases[field.name] ?? []).some((alias) => hasValue(payload[alias])),
+    )
     if (!answered) missing.push(question.label)
   }
   const compliance = payload.data_compliance

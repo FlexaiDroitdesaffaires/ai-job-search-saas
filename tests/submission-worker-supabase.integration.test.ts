@@ -62,7 +62,10 @@ async function approvedFixture(
     is_demo: false,
   })
   if (jobError) throw jobError
-  cleanup.push(async () => service.from("job_listings").delete().eq("id", jobId))
+  cleanup.unshift(async () => {
+    const { error } = await service.from("job_listings").delete().eq("id", jobId)
+    if (error) throw error
+  })
 
   const accepted = await userClient.rpc("decide_job", { p_job_id: jobId, p_decision: "saved" })
   if (accepted.error) throw accepted.error

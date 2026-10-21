@@ -16,7 +16,7 @@ export default async function JobsPage() {
     supabase.from("career_experiences").select("title,description").order("start_date", { ascending: false }),
     supabase.from("job_preferences").select("target_titles,countries,cities,work_modes,salary_min,salary_currency,employment_types,seniority").eq("user_id", user.id).maybeSingle(),
     supabase.from("job_listings").select("id,title,company,location,country,work_mode,employment_type,seniority,salary_min,salary_max,salary_currency,description,requirements,source_url,provider,posted_at,dedupe_key,application_mode,application_provider,application_reason").eq("is_active", true).eq("is_demo", false).neq("application_mode", "closed_invalid").not("source_url", "is", null).order("posted_at", { ascending: false }).limit(100),
-    supabase.from("saved_jobs").select("job_id,job_listings(dedupe_key)"),
+    supabase.from("saved_jobs").select("job_id,job:job_listings(dedupe_key)"),
   ])
 
   const failure = [profileResult, skillsResult, experiencesResult, preferencesResult, jobsResult, decisionsResult].find((result) => result.error)
@@ -42,7 +42,10 @@ export default async function JobsPage() {
       seniority: preferences.seniority,
     } : null,
   }
-  const decided = new Set((decisionsResult.data ?? []).map((item) => item.job_listings?.[0]?.dedupe_key).filter(Boolean))
+  const decided = new Set((decisionsResult.data ?? []).map((item) => {
+    const job = item.job as unknown as { dedupe_key?: string } | Array<{ dedupe_key?: string }> | null
+    return Array.isArray(job) ? job[0]?.dedupe_key : job?.dedupe_key
+  }).filter(Boolean))
   const canonicalJobs = [...new Map((jobsResult.data ?? []).map((row) => [row.dedupe_key, row])).values()]
   const jobs = canonicalJobs.map((row) => {
     const matchable: MatchableJob = {

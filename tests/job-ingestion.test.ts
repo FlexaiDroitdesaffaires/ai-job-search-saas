@@ -42,7 +42,7 @@ describe("job ingestion", () => {
     const parsed = parseRemoteOkRecord({
       id: "123",
       date: "2026-10-19T12:00:00+00:00",
-      company: "Example &amp; Co",
+      company: "Société Sothebyâ\u0080\u0099s &amp; Co",
       position: "Senior Backend Engineer",
       tags: ["golang", "senior"],
       description: "<p>Build APIs &amp; services.</p>",
@@ -54,7 +54,7 @@ describe("job ingestion", () => {
     expect(parsed).toMatchObject({
       provider: "remoteok",
       externalId: "123",
-      company: "Example & Co",
+      company: "Société Sotheby’s & Co",
       seniority: "senior",
       workMode: "remote",
       description: "Build APIs & services.",

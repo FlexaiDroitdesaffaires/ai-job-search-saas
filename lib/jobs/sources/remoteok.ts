@@ -1,4 +1,5 @@
 import type { EmploymentType, Seniority, SourceJob } from "../types"
+import { repairUtf8Mojibake } from "@/lib/text"
 
 export const REMOTE_OK_ENDPOINT = "https://remoteok.com/api"
 export const REMOTE_OK_ATTRIBUTION = "Remote OK"
@@ -6,7 +7,7 @@ export const REMOTE_OK_ATTRIBUTION = "Remote OK"
 type RemoteOkRecord = Record<string, unknown>
 
 function text(value: unknown) {
-  return typeof value === "string" ? value.trim() : ""
+  return typeof value === "string" ? repairUtf8Mojibake(value).trim() : ""
 }
 
 function number(value: unknown) {

@@ -210,7 +210,10 @@ describe.runIf(enabled)("Supabase local integration", () => {
       is_demo: false,
     })))
     expect(fixtureError).toBeNull()
-    cleanup.push(async () => service.from("job_listings").delete().in("id", jobIds))
+    cleanup.unshift(async () => {
+      const { error } = await service.from("job_listings").delete().in("id", jobIds)
+      if (error) throw error
+    })
 
     const skipped = await userOne.rpc("decide_job", { p_job_id: jobIds[0], p_decision: "skipped" })
     expect(skipped.error).toBeNull()
@@ -300,7 +303,10 @@ describe.runIf(enabled)("Supabase local integration", () => {
       is_demo: false,
     })
     expect(jobError).toBeNull()
-    cleanup.push(async () => service.from("job_listings").delete().eq("id", jobId))
+    cleanup.unshift(async () => {
+      const { error } = await service.from("job_listings").delete().eq("id", jobId)
+      if (error) throw error
+    })
     cleanup.push(() => deleteTestUser(service, first.id))
     cleanup.push(() => deleteTestUser(service, second.id))
 
