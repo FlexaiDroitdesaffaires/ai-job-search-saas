@@ -1,4 +1,4 @@
-# Validation locale Supabase — 2026-10-20
+# Validation locale Supabase — 2026-10-21
 
 ## Périmètre et cible
 
@@ -67,6 +67,38 @@ couvre leur backend transactionnel et la protection anti-double action ; un
 test navigateur gestuel dédié reste à ajouter si une suite E2E est introduite.
 Le navigateur intégré n’était pas disponible dans cet environnement ; aucune
 validation visuelle manuelle n’est donc revendiquée.
+
+## Validation préparation et approbation — 2026-10-20
+
+- migration locale `20261022000000_application_preparation` appliquée avec
+  `supabase migration up --local`, sans reset ;
+- acceptation suivie d’une préparation automatique testée avec un profil, un CV
+  et une offre fictifs non sensibles ;
+- extraction déterministe des exigences, comparaison au profil et absence de
+  qualification ajoutée testées ;
+- CV ciblé et lettre générés en PDF A4 textuel : extraction ATS automatisée,
+  rendu PNG et inspection visuelle sans coupure ni superposition ;
+- empreinte SHA-256 stable, recalcul PostgreSQL, rejet d’un hash falsifié et
+  replay d’une préparation identique vérifiés ;
+- replay d’une acceptation après préparation : même candidature et même état,
+  sans retour en brouillon ni nouvelle version automatique ;
+- approbation bloquée par téléphone manquant, puis acceptée après réponse
+  confirmée ;
+- snapshot approuvé immuable même via `service_role` local ; nouvelle version
+  après correction : ancien snapshot `superseded` et application revenue en
+  `ready_for_review` ;
+- isolation RLS des dossiers entre deux utilisateurs vérifiée ;
+- aucune ligne `application_submissions`, aucun `submitted_at` et aucune preuve
+  de soumission créés par le parcours ;
+- tests standards : 47 réussis et 3 tests locaux opt-in ignorés dans la commande
+  standard ; tests Supabase réels : 3 réussis ; pgTAP : 28/28 ;
+- TypeScript, lint et build de production réussis, incluant les routes de
+  préparation et d’export PDF.
+- contrôle HTTP sans session : page dossier `307` vers `/login` et export PDF
+  `401` ; aucune donnée de candidature n’est exposée anonymement.
+- suppression d’un compte de test porteur de trois versions de dossier :
+  validée via GoTrue après correction additive des références documentaires et
+  du trigger de présélection ; nettoyage final strict sans fixture résiduelle.
 
 ## Particularité de l'environnement
 

@@ -88,7 +88,7 @@ Ce fichier est la référence produit pour les prochaines phases. Toute décisio
 de conception doit préserver ces invariants et servir en priorité le parcours
 de candidature de bout en bout.
 
-## État technique validé au 20 octobre 2026
+## État technique validé au 21 octobre 2026
 
 - Le schéma cœur et les migrations additives d'ingestion et de décision sont validés uniquement
   sur Supabase local ; aucune migration distante n'a été lancée.
@@ -112,6 +112,20 @@ de candidature de bout en bout.
 - Le tableau de suivi expose l’état de préparation existant et n’affiche
   « Soumise avec preuve » qu’en présence de preuve. Aucune candidature réelle
   n’est soumise.
+- Après acceptation, le Lot C prépare automatiquement, lorsque les données sont
+  disponibles, un CV ciblé, une lettre et les informations de présélection par
+  traitement déterministe. Toute correction libre est attribuée explicitement
+  à l’utilisateur ; aucune qualification n’est ajoutée par le moteur.
+- Chaque dossier est versionné dans `application_dossiers`, lié aux versions du
+  CV et de la lettre, et protégé par une empreinte SHA-256 recalculée en base.
+  Une approbation fige la version ; une nouvelle modification la remplace et
+  ramène l’application en revue. Approuver ne soumet rien.
+- La suppression locale via GoTrue d’un compte portant des dossiers préparés
+  est validée : une seule cascade propriétaire passe par l’application, les
+  références documentaires sont vérifiées en fin de transaction et le trigger
+  de présélection conserve les verrous JWT sans exiger de droits directs pour
+  le rôle Auth.
 
-La prochaine verticale prioritaire est le Lot C : préparation factuelle des
-éléments, aperçu immuable et approbation invalidable avant toute soumission.
+La prochaine verticale prioritaire est le Lot D : interface d’adaptateur ATS,
+réconciliation des résultats incertains et preuve réelle, sans activer d’envoi
+avant autorisation explicite.

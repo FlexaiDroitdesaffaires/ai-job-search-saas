@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache"
 
+import { prepareApplicationDossierForUser } from "@/lib/applications/prepare-server"
 import { requireUser } from "@/lib/supabase/server"
 
 export type JobDecisionResult =
-  | { ok: true; decision: "saved" | "skipped"; applicationId: string | null }
+  | { ok: true; decision: "saved" | "skipped"; applicationId: string | null; preparation: "prepared" | "pending" | null }
   | { ok: false; message: string }
 
 export async function decideJob(jobId: string, decision: "saved" | "skipped"): Promise<JobDecisionResult> {
@@ -25,8 +26,13 @@ export async function decideJob(jobId: string, decision: "saved" | "skipped"): P
   })
   if (error) return { ok: false, message: error.message }
 
-  const response = data as { application_id?: string | null } | null
+  const response = data as { application_id?: string | null; replayed?: boolean } | null
+  const applicationId = response?.application_id ?? null
+  let preparation: "prepared" | "pending" | null = null
+  if (decision === "saved" && applicationId && !response?.replayed) {
+    preparation = (await prepareApplicationDossierForUser(supabase, user, applicationId)).ok ? "prepared" : "pending"
+  }
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/jobs")
-  return { ok: true, decision, applicationId: response?.application_id ?? null }
+  return { ok: true, decision, applicationId, preparation }
 }

@@ -1,0 +1,81 @@
+"use server"
+
+import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
+import { z } from "zod"
+
+import { applicationDossierSchema } from "@/lib/applications/dossier-schema"
+import { applyUserEdits } from "@/lib/applications/preparation"
+import { persistApplicationDossier, prepareApplicationDossierForUser } from "@/lib/applications/prepare-server"
+import { requireUser } from "@/lib/supabase/server"
+
+const idSchema = z.uuid()
+
+function destination(applicationId: string, key: "error" | "saved" | "approved", message: string): never {
+  redirect(`/dashboard/applications/${applicationId}?${key}=${encodeURIComponent(message)}`)
+}
+
+async function authenticated() {
+  const result = await requireUser()
+  if (!result.user) redirect("/login")
+  return { supabase: result.supabase, user: result.user }
+}
+
+export async function prepareApplication(formData: FormData) {
+  const applicationId = idSchema.safeParse(formData.get("applicationId"))
+  if (!applicationId.success) redirect("/dashboard?error=Identifiant%20invalide")
+  const { supabase, user } = await authenticated()
+
+  const result = await prepareApplicationDossierForUser(supabase, user, applicationId.data)
+  if (!result.ok) destination(applicationId.data, "error", result.message)
+  revalidatePath("/dashboard")
+  revalidatePath(`/dashboard/applications/${applicationId.data}`)
+  destination(applicationId.data, "saved", "Dossier préparé sans envoi.")
+}
+
+export async function saveApplicationDossier(formData: FormData) {
+  const applicationId = idSchema.safeParse(formData.get("applicationId"))
+  const dossierId = idSchema.safeParse(formData.get("dossierId"))
+  if (!applicationId.success || !dossierId.success) redirect("/dashboard?error=Identifiant%20invalide")
+  const { supabase, user } = await authenticated()
+  const { data: dossier, error: readError } = await supabase.from("application_dossiers")
+    .select("content,content_hash")
+    .eq("id", dossierId.data).eq("application_id", applicationId.data).eq("user_id", user.id).single()
+  const parsed = applicationDossierSchema.safeParse(dossier?.content)
+  if (readError || !parsed.success) destination(applicationId.data, "error", "Dossier introuvable ou invalide.")
+
+  const answers = Object.fromEntries(parsed.data.screeningAnswers.map((item) => [item.key, String(formData.get(`answer:${item.key}`) ?? "")]))
+  let content
+  try {
+    content = applyUserEdits(parsed.data, {
+      summary: String(formData.get("summary") ?? ""),
+      coverLetterBody: String(formData.get("coverLetterBody") ?? ""),
+      answers,
+      userConfirmed: formData.get("userConfirmed") === "on",
+    })
+  } catch {
+    destination(applicationId.data, "error", "Confirmez que les corrections saisies sont exactes.")
+  }
+  const { error } = await persistApplicationDossier(supabase, applicationId.data, content.resume.sourceResumeId, content)
+  if (error) destination(applicationId.data, "error", `La nouvelle version n’a pas pu être enregistrée : ${error.message}`)
+  revalidatePath("/dashboard")
+  revalidatePath(`/dashboard/applications/${applicationId.data}`)
+  destination(applicationId.data, "saved", "Nouvelle version enregistrée. Toute approbation antérieure est invalidée.")
+}
+
+export async function approveApplicationDossier(formData: FormData) {
+  const applicationId = idSchema.safeParse(formData.get("applicationId"))
+  const dossierId = idSchema.safeParse(formData.get("dossierId"))
+  const contentHash = z.string().regex(/^[0-9a-f]{64}$/).safeParse(formData.get("contentHash"))
+  if (!applicationId.success || !dossierId.success || !contentHash.success) redirect("/dashboard?error=Approbation%20invalide")
+  const { supabase } = await authenticated()
+  const { error } = await supabase.rpc("approve_application_dossier", {
+    p_application_id: applicationId.data,
+    p_dossier_id: dossierId.data,
+    p_expected_hash: contentHash.data,
+  })
+  if (error) destination(applicationId.data, "error", `Approbation impossible : ${error.message}`)
+  revalidatePath("/dashboard")
+  revalidatePath(`/dashboard/applications/${applicationId.data}`)
+  destination(applicationId.data, "approved", "Dossier approuvé et figé. Il n’est pas envoyé.")
+}

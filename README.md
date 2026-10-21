@@ -70,6 +70,11 @@ doit conserver son lien source. Voir [`docs/JOB_INGESTION.md`](./docs/JOB_INGEST
   attribution Remote OK ;
 - refus persistant sans candidature et acceptation atomique créant uniquement
   un brouillon de candidature ;
+- préparation déterministe automatique après acceptation lorsque le profil et
+  le CV sont complets ;
+- CV ciblé et lettre modifiables, exportables en PDF textuel ;
+- présélection traçable, dossier versionné, empreinte SHA-256 et approbation
+  explicite sans envoi ;
 - identité, expériences, compétences et préférences ;
 - import privé PDF/DOCX de 10 Mo maximum ;
 - extraction déterministe et correction manuelle des données de CV.
@@ -78,3 +83,6 @@ L'extraction et le matching ne produisent pas de nouvelles qualifications : ils
 classent et comparent uniquement les données présentes. Aucun adaptateur de
 candidature réelle n'est encore branché et aucune acceptation n’est présentée
 comme une soumission.
+
+Le fonctionnement détaillé du dossier et ses garanties d’immutabilité sont
+documentés dans [`docs/APPLICATION_PREPARATION.md`](./docs/APPLICATION_PREPARATION.md).

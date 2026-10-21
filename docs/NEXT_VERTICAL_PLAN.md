@@ -49,7 +49,9 @@ réelle de soumission par un adaptateur autorisé, soit un état explicite
 - **Lot B — validé localement :** matching déterministe expliqué, persistance
   des scores, file de swipe et décisions atomiques/idempotentes. Le refus ne
   crée rien ; l’acceptation crée uniquement une candidature `saved` / `draft`.
-- **Lot C :** préparation, aperçu figé et approbation invalidable.
+- **Lot C — validé localement :** préparation déterministe, CV et lettre PDF,
+  réponses traçables, snapshots SHA-256 immuables et approbation invalidée par
+  toute nouvelle version.
 - **Lot D :** adaptateur en bac à sable/fixture contractuelle, puis validation
   humaine avant toute autorisation d'envoi réel.
 

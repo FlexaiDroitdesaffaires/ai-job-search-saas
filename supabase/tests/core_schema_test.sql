@@ -68,13 +68,16 @@ select lives_ok($$
   values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', '11111111-1111-1111-1111-111111111111', 'Adapter Co', 'Adapter Role')
 $$, 'candidature adaptateur brouillon créée');
 
-select lives_ok($$
+select throws_ok($$
   update public.applications set prep_state = 'approved'
   where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2'
-$$, 'approbation utilisateur acceptée');
+$$, '42501', 'application approval must use approve_application_dossier',
+  'approbation directe sans dossier refusée');
 
 reset role;
 set local role service_role;
+update public.applications set prep_state = 'approved'
+where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2';
 create temporary table submission_result as
 select public.start_application_submission(
   'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'idem-adapter-0001', 'test-adapter',

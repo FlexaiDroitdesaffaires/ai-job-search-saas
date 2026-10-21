@@ -19,7 +19,13 @@ describe("core migration PostgreSQL compatibility smoke test", () => {
       create role service_role nologin bypassrls;
       create schema auth;
       create schema storage;
-      grant usage on schema public, auth, storage to anon, authenticated, service_role;
+      create schema extensions;
+      grant usage on schema public, auth, storage, extensions to anon, authenticated, service_role;
+
+      create function extensions.digest(data bytea, algorithm text) returns bytea
+      language sql immutable set search_path = '' as $$
+        select decode(repeat('00', 32), 'hex')
+      $$;
 
       create table auth.users (
         id uuid primary key,
@@ -72,7 +78,7 @@ describe("core migration PostgreSQL compatibility smoke test", () => {
     const result = await db.query<{ count: number }>(
       "select count(*)::integer as count from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and obj_description(c.oid, 'pg_class')='app:core_schema_v1'",
     )
-    expect(result.rows[0]?.count).toBe(25)
+    expect(result.rows[0]?.count).toBe(26)
   })
 
   it("ajoute les marqueurs de fraîcheur des offres", async () => {
@@ -156,6 +162,8 @@ describe("core migration PostgreSQL compatibility smoke test", () => {
       set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
       insert into public.applications (id, user_id, company, job_title)
       values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', '11111111-1111-1111-1111-111111111111', 'Adapter', 'Role');
+      reset role;
+      set role service_role;
       update public.applications set prep_state='approved' where id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2';
       reset role;
       set role service_role;

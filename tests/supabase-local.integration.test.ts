@@ -7,6 +7,9 @@ import { Document, Packer, Paragraph } from "docx"
 import { PDFDocument, StandardFonts } from "pdf-lib"
 import { afterAll, describe, expect, it } from "vitest"
 
+import { dossierFingerprint } from "@/lib/applications/hash"
+import { applyUserEdits, prepareApplicationContent } from "@/lib/applications/preparation"
+import { prepareApplicationDossierForUser } from "@/lib/applications/prepare-server"
 import { DOCX_MIME, extractResumeText, PDF_MIME } from "@/lib/resume/extract"
 
 type LocalStatus = {
@@ -18,6 +21,11 @@ type LocalStatus = {
 
 const enabled = process.env.RUN_SUPABASE_LOCAL === "1"
 const cleanup: Array<() => Promise<unknown>> = []
+
+async function deleteTestUser(service: SupabaseClient, userId: string) {
+  const { error } = await service.auth.admin.deleteUser(userId)
+  if (error) throw error
+}
 
 function localStatus(): LocalStatus {
   const cli = path.join(process.cwd(), "node_modules", ".bin", "supabase")
@@ -95,8 +103,8 @@ describe.runIf(enabled)("Supabase local integration", () => {
 
     const first = await signUpAndLogin(userOne, "first")
     const second = await signUpAndLogin(userTwo, "second")
-    cleanup.push(() => service.auth.admin.deleteUser(first.id))
-    cleanup.push(() => service.auth.admin.deleteUser(second.id))
+    cleanup.push(() => deleteTestUser(service, first.id))
+    cleanup.push(() => deleteTestUser(service, second.id))
 
     const { data: ownProfiles, error: ownProfilesError } = await userOne
       .from("profiles").select("id").in("id", [first.id, second.id])
@@ -182,8 +190,8 @@ describe.runIf(enabled)("Supabase local integration", () => {
     const service = client(status.API_URL, status.SERVICE_ROLE_KEY)
     const first = await signUpAndLogin(userOne, "swipe-first")
     const second = await signUpAndLogin(userTwo, "swipe-second")
-    cleanup.push(() => service.auth.admin.deleteUser(first.id))
-    cleanup.push(() => service.auth.admin.deleteUser(second.id))
+    cleanup.push(() => deleteTestUser(service, first.id))
+    cleanup.push(() => deleteTestUser(service, second.id))
 
     const jobIds = [randomUUID(), randomUUID(), randomUUID()]
     const { error: fixtureError } = await service.from("job_listings").insert(jobIds.map((id, index) => ({
@@ -257,5 +265,216 @@ describe.runIf(enabled)("Supabase local integration", () => {
     const persisted = await reloaded.from("saved_jobs").select("job_id,decision").in("job_id", jobIds).order("job_id")
     expect(persisted.error).toBeNull()
     expect(persisted.data).toHaveLength(3)
+  }, 120_000)
+
+  it("prepares, approves and invalidates immutable application dossiers", async () => {
+    const status = localStatus()
+    const userOne = client(status.API_URL, status.ANON_KEY)
+    const userTwo = client(status.API_URL, status.ANON_KEY)
+    const service = client(status.API_URL, status.SERVICE_ROLE_KEY)
+    const first = await signUpAndLogin(userOne, "dossier-first")
+    const second = await signUpAndLogin(userTwo, "dossier-second")
+
+    const jobId = randomUUID()
+    const { error: jobError } = await service.from("job_listings").insert({
+      id: jobId,
+      provider: "local-test",
+      external_id: `dossier-${jobId}`,
+      title: "Senior TypeScript Engineer",
+      company: "Local Dossier Company",
+      location: "Remote",
+      country: "France",
+      work_mode: "remote",
+      employment_type: "full_time",
+      seniority: "senior",
+      description: "TypeScript and React are required. Kubernetes is mandatory.",
+      requirements: ["TypeScript", "React", "Kubernetes"],
+      source_url: `https://example.test/jobs/${jobId}`,
+      dedupe_key: jobId.replaceAll("-", ""),
+      source_url_verified_at: new Date().toISOString(),
+      source_url_status: 200,
+      is_active: true,
+      is_demo: false,
+    })
+    expect(jobError).toBeNull()
+    cleanup.push(async () => service.from("job_listings").delete().eq("id", jobId))
+    cleanup.push(() => deleteTestUser(service, first.id))
+    cleanup.push(() => deleteTestUser(service, second.id))
+
+    expect((await userOne.from("profiles").update({
+      full_name: "Camille Local",
+      current_title: "Software Engineer",
+      experience_level: "senior",
+      location: "Paris, France",
+      phone: null,
+      summary: "Ingénieure logiciel spécialisée dans les applications web.",
+    }).eq("id", first.id)).error).toBeNull()
+    expect((await userOne.from("skills").insert([
+      { user_id: first.id, name: "TypeScript" },
+      { user_id: first.id, name: "React" },
+      { user_id: first.id, name: "PostgreSQL" },
+    ])).error).toBeNull()
+    const experienceId = randomUUID()
+    expect((await userOne.from("career_experiences").insert({
+      id: experienceId,
+      user_id: first.id,
+      title: "Software Engineer",
+      company: "Example Local",
+      description: "Développement TypeScript et React.",
+      is_current: true,
+    })).error).toBeNull()
+    const resumeId = randomUUID()
+    expect((await userOne.from("resumes").insert({
+      id: resumeId,
+      user_id: first.id,
+      title: "CV local",
+      parse_status: "parsed",
+      parsed_data: { sections: { education: ["Master informatique"] } },
+      is_primary: true,
+    })).error).toBeNull()
+
+    const accepted = await userOne.rpc("decide_job", { p_job_id: jobId, p_decision: "saved" })
+    expect(accepted.error).toBeNull()
+    const applicationId = accepted.data.application_id as string
+    const content = prepareApplicationContent({
+      profile: {
+        id: first.id,
+        email: first.email!,
+        full_name: "Camille Local",
+        phone: null,
+        location: "Paris, France",
+        linkedin_url: null,
+        current_title: "Software Engineer",
+        experience_level: "senior",
+        summary: "Ingénieure logiciel spécialisée dans les applications web.",
+      },
+      skills: [
+        { id: randomUUID(), name: "PostgreSQL" },
+        { id: randomUUID(), name: "React" },
+        { id: randomUUID(), name: "TypeScript" },
+      ],
+      experiences: [{
+        id: experienceId,
+        title: "Software Engineer",
+        company: "Example Local",
+        location: null,
+        start_date: null,
+        end_date: null,
+        is_current: true,
+        description: "Développement TypeScript et React.",
+      }],
+      resume: { id: resumeId, title: "CV local", parsed_data: { sections: { education: ["Master informatique"] } } },
+      application: {
+        id: applicationId,
+        job_id: jobId,
+        job_title: "Senior TypeScript Engineer",
+        company: "Local Dossier Company",
+        job_url: `https://example.test/jobs/${jobId}`,
+      },
+      job: {
+        id: jobId,
+        title: "Senior TypeScript Engineer",
+        company: "Local Dossier Company",
+        sourceUrl: `https://example.test/jobs/${jobId}`,
+        location: "Remote",
+        country: "France",
+        workMode: "remote",
+        employmentType: "full_time",
+        seniority: "senior",
+        description: "TypeScript and React are required. Kubernetes is mandatory.",
+        requirements: ["TypeScript", "React", "Kubernetes"],
+      },
+    })
+    const firstFingerprint = dossierFingerprint(content)
+    const prepareArgs = {
+      p_application_id: applicationId,
+      p_resume_id: resumeId,
+      p_content: content,
+      p_canonical_content: firstFingerprint.canonical,
+      p_content_hash: firstFingerprint.hash,
+    }
+    expect((await userOne.rpc("prepare_application_dossier", {
+      ...prepareArgs,
+      p_content_hash: "a".repeat(64),
+    })).error).not.toBeNull()
+    expect(await prepareApplicationDossierForUser(userOne, first, applicationId)).toEqual({ ok: true })
+    const prepared = await userOne.rpc("prepare_application_dossier", prepareArgs)
+    const replay = await userOne.rpc("prepare_application_dossier", prepareArgs)
+    expect(prepared.error).toBeNull()
+    expect(prepared.data).toMatchObject({ version: 1, state: "draft", replayed: true })
+    expect(replay.data).toMatchObject({ dossier_id: prepared.data.dossier_id, version: 1, replayed: true })
+    expect((await userOne.rpc("approve_application_dossier", {
+      p_application_id: applicationId,
+      p_dossier_id: prepared.data.dossier_id,
+      p_expected_hash: firstFingerprint.hash,
+    })).error).not.toBeNull()
+
+    const completed = applyUserEdits(content, {
+      summary: content.resume.summary,
+      coverLetterBody: content.coverLetter.body,
+      answers: { phone: "+33 6 00 00 00 00" },
+      userConfirmed: true,
+    })
+    const completedFingerprint = dossierFingerprint(completed)
+    const preparedCompleted = await userOne.rpc("prepare_application_dossier", {
+      p_application_id: applicationId,
+      p_resume_id: resumeId,
+      p_content: completed,
+      p_canonical_content: completedFingerprint.canonical,
+      p_content_hash: completedFingerprint.hash,
+    })
+    expect(preparedCompleted.error).toBeNull()
+    expect(preparedCompleted.data).toMatchObject({ version: 2, state: "draft" })
+    const approved = await userOne.rpc("approve_application_dossier", {
+      p_application_id: applicationId,
+      p_dossier_id: preparedCompleted.data.dossier_id,
+      p_expected_hash: completedFingerprint.hash,
+    })
+    expect(approved.error).toBeNull()
+    expect(approved.data).toMatchObject({ version: 2, state: "approved", content_hash: completedFingerprint.hash })
+
+    const dossierMutation = await userOne.from("application_dossiers").update({ content_hash: "a".repeat(64) }).eq("id", preparedCompleted.data.dossier_id)
+    expect(dossierMutation.error).not.toBeNull()
+    const privilegedMutation = await service.from("application_dossiers").update({ content_hash: "b".repeat(64) }).eq("id", preparedCompleted.data.dossier_id)
+    expect(privilegedMutation.error?.message).toContain("immutable")
+    expect((await userTwo.from("application_dossiers").select("id").eq("application_id", applicationId)).data).toEqual([])
+
+    const modified = applyUserEdits(completed, {
+      summary: completed.resume.summary,
+      coverLetterBody: `${completed.coverLetter.body}\n\nTexte corrigé par le candidat.`,
+      answers: Object.fromEntries(completed.screeningAnswers.map((item) => [item.key, item.answer])),
+      userConfirmed: true,
+    })
+    const modifiedFingerprint = dossierFingerprint(modified)
+    const newVersion = await userOne.rpc("prepare_application_dossier", {
+      p_application_id: applicationId,
+      p_resume_id: resumeId,
+      p_content: modified,
+      p_canonical_content: modifiedFingerprint.canonical,
+      p_content_hash: modifiedFingerprint.hash,
+    })
+    expect(newVersion.error).toBeNull()
+    expect(newVersion.data).toMatchObject({ version: 3, state: "draft" })
+    const directApproval = await userOne.from("applications").update({ prep_state: "approved" }).eq("id", applicationId)
+    expect(directApproval.error).not.toBeNull()
+    const { data: dossierStates } = await userOne.from("application_dossiers")
+      .select("version,state").eq("application_id", applicationId).order("version")
+    expect(dossierStates).toEqual([
+      { version: 1, state: "superseded" },
+      { version: 2, state: "superseded" },
+      { version: 3, state: "draft" },
+    ])
+    const currentApplication = await userOne.from("applications")
+      .select("status,prep_state,submitted_at,submission_evidence").eq("id", applicationId).single()
+    expect(currentApplication.data).toMatchObject({ status: "prepared", prep_state: "ready_for_review", submitted_at: null, submission_evidence: null })
+    const acceptedReplay = await userOne.rpc("decide_job", { p_job_id: jobId, p_decision: "saved" })
+    expect(acceptedReplay.error).toBeNull()
+    expect(acceptedReplay.data).toMatchObject({
+      replayed: true,
+      application_id: applicationId,
+      application_status: "prepared",
+      preparation_state: "ready_for_review",
+    })
+    expect((await service.from("application_submissions").select("id", { count: "exact", head: true }).eq("application_id", applicationId)).count).toBe(0)
   }, 120_000)
 })
