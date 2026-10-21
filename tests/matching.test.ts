@@ -91,7 +91,8 @@ describe("deterministic explainable matching", () => {
 describe("application progress labels", () => {
   it("never labels submitted without evidence as a proven submission", () => {
     expect(applicationProgress({ prep_state: "submitted" })).toContain("incohérent")
-    expect(applicationProgress({ prep_state: "submitted", submission_evidence: { receipt: "ok" } })).toBe("Soumise avec preuve")
+    expect(applicationProgress({ prep_state: "submitted", submission_method: "adapter", submission_evidence: { receipt: "ok" } })).toBe("Soumission confirmée par le fournisseur")
+    expect(applicationProgress({ prep_state: "submitted", submission_method: "manual", submission_evidence: { confirmed_by_user: true } })).toBe("Envoi déclaré par l’utilisateur")
   })
 
   it.each([

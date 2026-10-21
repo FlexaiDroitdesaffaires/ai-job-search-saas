@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
 
+import { type AssistedDecision } from "@/lib/applications/assisted"
 import { applicationDossierSchema } from "@/lib/applications/dossier-schema"
 import { applyUserEdits } from "@/lib/applications/preparation"
 import { persistApplicationDossier, prepareApplicationDossierForUser } from "@/lib/applications/prepare-server"
@@ -11,7 +12,7 @@ import { requireUser } from "@/lib/supabase/server"
 
 const idSchema = z.uuid()
 
-function destination(applicationId: string, key: "error" | "saved" | "approved", message: string): never {
+function destination(applicationId: string, key: "error" | "saved" | "approved" | "assisted", message: string): never {
   redirect(`/dashboard/applications/${applicationId}?${key}=${encodeURIComponent(message)}`)
 }
 
@@ -78,4 +79,28 @@ export async function approveApplicationDossier(formData: FormData) {
   revalidatePath("/dashboard")
   revalidatePath(`/dashboard/applications/${applicationId.data}`)
   destination(applicationId.data, "approved", "Dossier approuvé et figé. Il n’est pas envoyé.")
+}
+
+export async function recordAssistedApplicationDecision(formData: FormData) {
+  const applicationId = idSchema.safeParse(formData.get("applicationId"))
+  const decision = z.enum(["sent", "not_sent", "unable"]).safeParse(formData.get("decision"))
+  if (!applicationId.success || !decision.success) redirect("/dashboard?error=Déclaration%20invalide")
+  if (decision.data === "sent" && formData.get("userConfirmedSend") !== "on") {
+    destination(applicationId.data, "error", "Confirmez que vous avez vous-même envoyé la candidature.")
+  }
+  const { supabase } = await authenticated()
+  const { error } = await supabase.rpc("record_assisted_application_decision", {
+    p_application_id: applicationId.data,
+    p_decision: decision.data satisfies AssistedDecision,
+  })
+  if (error) destination(applicationId.data, "error", `Déclaration impossible : ${error.message}`)
+
+  const messages: Record<AssistedDecision, string> = {
+    sent: "Déclaration enregistrée : vous indiquez avoir envoyé la candidature. Aucune confirmation ATS n’a été créée.",
+    not_sent: "Décision enregistrée : candidature pas encore envoyée.",
+    unable: "Décision enregistrée : impossible de candidater.",
+  }
+  revalidatePath("/dashboard")
+  revalidatePath(`/dashboard/applications/${applicationId.data}`)
+  destination(applicationId.data, "assisted", messages[decision.data])
 }

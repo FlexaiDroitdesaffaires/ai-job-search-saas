@@ -2,7 +2,9 @@ import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
 
 import { approveApplicationDossier, prepareApplication, saveApplicationDossier } from "../actions"
+import { AssistedApplication } from "@/components/applications/assisted-application"
 import { SubmitButton } from "@/components/submit-button"
+import { applicationEventLabel, verifiedOfficialUrl } from "@/lib/applications/assisted"
 import { applicationDossierSchema } from "@/lib/applications/dossier-schema"
 import { applicationProgress } from "@/lib/applications/status"
 import { requireUser } from "@/lib/supabase/server"
@@ -13,14 +15,14 @@ export default async function ApplicationPreparationPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ error?: string; saved?: string; approved?: string }>
+  searchParams: Promise<{ error?: string; saved?: string; approved?: string; assisted?: string }>
 }) {
   const { id } = await params
   const notices = await searchParams
   const { supabase, user } = await requireUser()
   if (!user) redirect(`/login?next=${encodeURIComponent(`/dashboard/applications/${id}`)}`)
   const { data: application, error } = await supabase.from("applications")
-    .select("id,job_id,job_title,company,prep_state,status,submitted_at,submission_evidence")
+    .select("id,job_id,job_title,company,job_url,prep_state,status,submitted_at,submission_method,submission_evidence")
     .eq("id", id).eq("user_id", user.id).single()
   if (error || !application) notFound()
 
@@ -33,9 +35,22 @@ export default async function ApplicationPreparationPage({
   const invalidDossier = Boolean(dossierError || (dossier && !parsed?.success))
   const locked = application.prep_state === "submitting" || application.prep_state === "submitted"
   const { data: submissionRows } = await supabase.from("application_submissions")
-    .select("id,state,environment,provider,attempt_count,error_message,provider_submission_id,tracking_url,started_at,confirmed_at")
+    .select("id,state,method,environment,provider,attempt_count,error_message,provider_submission_id,tracking_url,started_at,confirmed_at")
     .eq("application_id", id).order("started_at", { ascending: false }).limit(1)
   const submission = submissionRows?.[0] ?? null
+  const [{ data: job }, { data: assisted }, { data: events }] = await Promise.all([
+    supabase.from("job_listings").select("source_url,application_url").eq("id", application.job_id).maybeSingle(),
+    supabase.from("assisted_application_states").select("official_url,opened_at,user_decision,decided_at").eq("application_id", id).maybeSingle(),
+    supabase.from("application_events").select("id,event_type,created_at").eq("application_id", id).order("created_at", { ascending: false }).limit(12),
+  ])
+  const officialUrl = verifiedOfficialUrl({
+    storedUrl: application.job_url,
+    sourceUrl: job?.source_url ?? null,
+    applicationUrl: job?.application_url ?? null,
+  })
+  const assistedAvailable = dossier?.state === "approved"
+    && (["approved", "needs_manual_action"].includes(application.prep_state)
+      || (application.prep_state === "submitted" && application.submission_method === "manual"))
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl space-y-8 px-4 py-8 sm:px-6 sm:py-12">
@@ -45,6 +60,7 @@ export default async function ApplicationPreparationPage({
       {notices.error && <p className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">{notices.error}</p>}
       {notices.saved && <p className="rounded-lg bg-muted p-4 text-sm">{notices.saved}</p>}
       {notices.approved && <p className="rounded-lg bg-emerald-100 p-4 text-sm text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">{notices.approved}</p>}
+      {notices.assisted && <p className="rounded-lg bg-sky-100 p-4 text-sm text-sky-950 dark:bg-sky-950/30 dark:text-sky-100">{notices.assisted}</p>}
       {invalidDossier && <p className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">Le dossier enregistré est inaccessible ou invalide. Aucun document n’a été modifié.</p>}
 
       {!invalidDossier && !content ? (
@@ -67,7 +83,9 @@ export default async function ApplicationPreparationPage({
           </form>
 
           {dossier?.state === "draft" && <section className="space-y-4 rounded-2xl border bg-card p-6"><h2 className="text-xl font-semibold">Approbation finale</h2><p className="text-sm text-muted-foreground">L’approbation fige exactement cette version. Elle ne soumet pas la candidature.</p><form action={approveApplicationDossier}><input name="applicationId" type="hidden" value={application.id} /><input name="dossierId" type="hidden" value={dossier.id} /><input name="contentHash" type="hidden" value={dossier.content_hash} /><SubmitButton disabled={content.missingFields.length > 0} pendingLabel="Approbation…">Approuver cette version</SubmitButton></form></section>}
-          {dossier?.state === "approved" && <p className="rounded-xl bg-emerald-100 p-4 text-sm text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">Version approuvée et immuable. Statut réel : non envoyée.</p>}
+          {dossier?.state === "approved" && application.prep_state !== "submitted" && <p className="rounded-xl bg-emerald-100 p-4 text-sm text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">Version approuvée et immuable. Statut réel : non envoyée tant que vous ne déclarez pas l’envoi.</p>}
+          {assistedAvailable && <AssistedApplication applicationId={application.id} answers={content.screeningAnswers.map(({ key, question, answer }) => ({ key, question, answer }))} decision={assisted?.user_decision ?? null} initiallyOpened={Boolean(assisted?.opened_at)} officialUrl={officialUrl} />}
+          {events?.length ? <section className="space-y-3 rounded-2xl border bg-card p-6"><h2 className="text-xl font-semibold">Historique</h2><ol className="space-y-2">{events.map((event) => <li className="flex flex-col justify-between gap-1 rounded-lg bg-muted p-3 text-sm sm:flex-row" key={event.id}><span>{applicationEventLabel(event.event_type)}</span><time className="text-xs text-muted-foreground" dateTime={event.created_at}>{new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.created_at))}</time></li>)}</ol></section> : null}
         </>
       ) : null}
     </main>

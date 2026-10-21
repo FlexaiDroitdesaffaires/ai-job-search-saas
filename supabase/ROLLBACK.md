@@ -78,3 +78,13 @@ un claim pré-envoi expiré qui a atteint sa limite, au lieu de laisser un retry
 intraitable. Une expiration après début d'envoi reste toujours incertaine et
 part en réconciliation. Cette migration ne modifie aucune ligne lors de son
 installation ; elle remplace uniquement la fonction de claim.
+
+La migration `20261025000000_assisted_applications.sql` ajoute un état de
+parcours assisté par candidature, deux RPC authentifiées et des événements
+append-only. Elle ne modifie aucune offre ni aucun dossier existant. L’index
+d’unicité des soumissions exclut seulement l’état terminal
+`needs_manual_action`, afin qu’une déclaration manuelle ultérieure puisse
+coexister avec l’échec explicite de l’adaptateur. Un retour arrière doit
+d’abord arrêter les appels aux deux RPC ; la table et son historique doivent
+être exportés avant toute suppression. Rétablir l’ancien index sans traiter
+les candidatures ayant les deux traces peut échouer et n’est pas automatisé.

@@ -486,4 +486,76 @@ describe.runIf(enabled)("Supabase local integration", () => {
     })
     expect((await service.from("application_submissions").select("id", { count: "exact", head: true }).eq("application_id", applicationId)).count).toBe(0)
   }, 120_000)
+
+  it("persists an isolated and idempotent assisted application without fabricating ATS proof", async () => {
+    const status = localStatus()
+    const userOne = client(status.API_URL, status.ANON_KEY)
+    const userTwo = client(status.API_URL, status.ANON_KEY)
+    const service = client(status.API_URL, status.SERVICE_ROLE_KEY)
+    const first = await signUpAndLogin(userOne, "assisted-first")
+    const second = await signUpAndLogin(userTwo, "assisted-second")
+    cleanup.push(() => deleteTestUser(service, first.id))
+    cleanup.push(() => deleteTestUser(service, second.id))
+
+    const jobId = randomUUID()
+    const resumeId = randomUUID()
+    const resumeVersionId = randomUUID()
+    const coverLetterId = randomUUID()
+    const applicationId = randomUUID()
+    const dossierId = randomUUID()
+    const officialUrl = `https://example.test/jobs/${jobId}`
+    expect((await service.from("job_listings").insert({
+      id: jobId, provider: "local-test", external_id: `assisted-${jobId}`,
+      title: "Assisted role", company: "Assisted Company", source_url: officialUrl,
+      application_url: officialUrl, application_mode: "manual_required",
+      dedupe_key: jobId.replaceAll("-", ""), is_active: true, is_demo: false,
+    })).error).toBeNull()
+    cleanup.unshift(async () => {
+      const { error } = await service.from("job_listings").delete().eq("id", jobId)
+      if (error) throw error
+    })
+    expect((await service.from("resumes").insert({ id: resumeId, user_id: first.id, title: "Assisted CV", parse_status: "parsed" })).error).toBeNull()
+    expect((await service.from("resume_versions").insert({ id: resumeVersionId, user_id: first.id, resume_id: resumeId, name: "Assisted CV", content: {}, tailored_for_job_id: jobId })).error).toBeNull()
+    expect((await service.from("cover_letters").insert({ id: coverLetterId, user_id: first.id, job_id: jobId, title: "Assisted letter", content: "Letter" })).error).toBeNull()
+    expect((await service.from("applications").insert({
+      id: applicationId, user_id: first.id, job_id: jobId, company: "Assisted Company",
+      job_title: "Assisted role", job_url: officialUrl, status: "prepared", prep_state: "approved",
+      resume_version_id: resumeVersionId, cover_letter_id: coverLetterId,
+    })).error).toBeNull()
+    expect((await service.from("application_dossiers").insert({
+      id: dossierId, user_id: first.id, application_id: applicationId, job_id: jobId,
+      resume_version_id: resumeVersionId, cover_letter_id: coverLetterId, version: 1,
+      schema_version: "application-dossier-v1", content: {}, content_hash: "a".repeat(64),
+      state: "approved", approved_at: new Date().toISOString(),
+    })).error).toBeNull()
+
+    expect((await userOne.rpc("record_assisted_application_decision", { p_application_id: applicationId, p_decision: "not_sent" })).error?.message).toContain("opened first")
+    const opened = await userOne.rpc("open_assisted_application_form", { p_application_id: applicationId })
+    const openedReplay = await userOne.rpc("open_assisted_application_form", { p_application_id: applicationId })
+    expect(opened.error).toBeNull()
+    expect(opened.data).toMatchObject({ official_url: officialUrl, replayed: false })
+    expect(openedReplay.data).toMatchObject({ official_url: officialUrl, replayed: true })
+    expect((await userTwo.from("assisted_application_states").select("application_id").eq("application_id", applicationId)).data).toEqual([])
+    expect((await userTwo.rpc("open_assisted_application_form", { p_application_id: applicationId })).error).not.toBeNull()
+
+    const notSent = await userOne.rpc("record_assisted_application_decision", { p_application_id: applicationId, p_decision: "not_sent" })
+    const notSentReplay = await userOne.rpc("record_assisted_application_decision", { p_application_id: applicationId, p_decision: "not_sent" })
+    expect(notSent.data).toMatchObject({ decision: "not_sent", replayed: false })
+    expect(notSentReplay.data).toMatchObject({ decision: "not_sent", replayed: true })
+    expect((await userOne.rpc("record_assisted_application_decision", { p_application_id: applicationId, p_decision: "unable" })).error).toBeNull()
+    expect((await userOne.from("applications").select("prep_state,submitted_at,submission_evidence").eq("id", applicationId).single()).data).toMatchObject({ prep_state: "needs_manual_action", submitted_at: null, submission_evidence: null })
+
+    const sent = await userOne.rpc("record_assisted_application_decision", { p_application_id: applicationId, p_decision: "sent" })
+    const sentReplay = await userOne.rpc("record_assisted_application_decision", { p_application_id: applicationId, p_decision: "sent" })
+    expect(sent.error).toBeNull()
+    expect(sent.data).toMatchObject({ decision: "sent", confirmation_source: "user", replayed: false })
+    expect(sentReplay.data).toMatchObject({ decision: "sent", confirmation_source: "user", replayed: true })
+    const application = await userOne.from("applications").select("status,prep_state,submission_method,submission_evidence").eq("id", applicationId).single()
+    expect(application.data).toMatchObject({ status: "applied", prep_state: "submitted", submission_method: "manual", submission_evidence: { confirmed_by_user: true } })
+    const submissions = await service.from("application_submissions").select("method,state,provider,provider_submission_id,evidence").eq("application_id", applicationId)
+    expect(submissions.data).toHaveLength(1)
+    expect(submissions.data?.[0]).toMatchObject({ method: "manual", state: "confirmed", provider: null, provider_submission_id: null, evidence: { confirmed_by_user: true } })
+    expect((await service.from("application_events").select("id", { count: "exact", head: true }).eq("application_id", applicationId).eq("event_type", "official_form_opened")).count).toBe(1)
+    expect((await service.from("application_events").select("id", { count: "exact", head: true }).eq("application_id", applicationId).eq("event_type", "assisted_application_not_sent")).count).toBe(1)
+  }, 120_000)
 })

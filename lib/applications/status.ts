@@ -1,9 +1,11 @@
 export type ApplicationStatusInput = {
   prep_state: string
   submission_evidence?: unknown
+  submission_method?: string | null
   submission?: {
     state: string
     environment?: string | null
+    method?: string | null
   } | null
 }
 
@@ -21,7 +23,9 @@ export function applicationProgress(input: ApplicationStatusInput) {
       case "failed": return "Échec confirmé"
       case "confirmed":
         return input.prep_state === "submitted" && input.submission_evidence
-          ? "Soumission confirmée"
+          ? (input.submission.method === "manual" || input.submission_method === "manual"
+              ? "Envoi déclaré par l’utilisateur"
+              : "Soumission confirmée par le fournisseur")
           : "État incohérent — confirmation sans preuve applicative"
     }
   }
@@ -30,7 +34,9 @@ export function applicationProgress(input: ApplicationStatusInput) {
     case "ready_for_review": return "En cours de préparation"
     case "approved": return "Dossier approuvé"
     case "submitting": return "En cours de traitement"
-    case "submitted": return input.submission_evidence ? "Soumise avec preuve" : "État incohérent — preuve absente"
+    case "submitted": return input.submission_evidence
+      ? (input.submission_method === "manual" ? "Envoi déclaré par l’utilisateur" : "Soumission confirmée par le fournisseur")
+      : "État incohérent — preuve absente"
     case "needs_manual_action": return "Intervention nécessaire"
     case "failed": return "Échec confirmé"
     default: return "État inconnu"
