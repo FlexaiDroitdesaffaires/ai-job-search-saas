@@ -1,5 +1,6 @@
-import Link from "next/link"
 import { redirect } from "next/navigation"
+import Link from "next/link"
+import { SlidersHorizontal } from "lucide-react"
 
 import { JobDeck, type DiscoverableJob } from "@/components/jobs/job-deck"
 import { computeJobMatch } from "@/lib/matching/engine"
@@ -21,7 +22,7 @@ export default async function JobsPage() {
 
   const failure = [profileResult, skillsResult, experiencesResult, preferencesResult, jobsResult, decisionsResult].find((result) => result.error)
   if (failure?.error) {
-    return <main className="mx-auto min-h-screen max-w-5xl px-6 py-12"><p className="rounded-lg bg-destructive/10 p-4 text-destructive">Impossible de charger les offres : {failure.error.message}</p></main>
+    return <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6"><p className="rounded-2xl bg-red-50 p-4 text-red-700">Impossible de charger les offres : {failure.error.message}</p></main>
   }
 
   const preferences = preferencesResult.data
@@ -70,7 +71,7 @@ export default async function JobsPage() {
       { onConflict: "user_id,job_id" },
     )
     if (error) {
-      return <main className="mx-auto min-h-screen max-w-5xl px-6 py-12"><p className="rounded-lg bg-destructive/10 p-4 text-destructive">Le matching n’a pas pu être enregistré : {error.message}</p></main>
+      return <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6"><p className="rounded-2xl bg-red-50 p-4 text-red-700">Le matching n’a pas pu être enregistré : {error.message}</p></main>
     }
   }
 
@@ -80,9 +81,11 @@ export default async function JobsPage() {
     .map(({ row, match }) => ({ ...row, source_url: row.source_url!, match }))
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl space-y-8 px-6 py-12">
-      <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm text-muted-foreground">Lot B</p><h1 className="text-3xl font-semibold">Offres compatibles</h1><p className="mt-2 max-w-2xl text-muted-foreground">Accepter crée uniquement un brouillon de candidature. Aucun envoi n’est effectué.</p></div><div className="flex gap-2"><Link className="rounded-lg border px-4 py-2 text-sm" href="/onboarding">Modifier le profil</Link><Link className="rounded-lg border px-4 py-2 text-sm" href="/dashboard">Suivi</Link></div></header>
+    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+      <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="eyebrow">Découvrir</p><h1 className="page-title mt-2">Trouvez l’offre qui vous ressemble.</h1><p className="mt-3 max-w-2xl text-slate-600">Une offre à la fois, avec les raisons du matching. Accepter crée un brouillon — aucun envoi n’est effectué.</p></div><Link className="btn-secondary self-start" href="/onboarding#preferences"><SlidersHorizontal className="size-4" />Ajuster mes critères</Link></header>
+      <div className="mt-9">
       <JobDeck initialJobs={visibleJobs} />
+      </div>
     </main>
   )
 }

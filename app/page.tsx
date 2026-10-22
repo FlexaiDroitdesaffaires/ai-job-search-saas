@@ -1,27 +1,71 @@
 import Link from "next/link"
+import { ArrowRight, BriefcaseBusiness, Check, ChevronRight, FileCheck2, FileText, Gauge, MousePointer2, ShieldCheck, Sparkles, Target, WandSparkles, X } from "lucide-react"
+
+import { Brand } from "@/components/brand"
 
 export default function Page() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center gap-8 px-6 py-16">
-      <div className="max-w-2xl space-y-5">
-        <p className="text-sm font-medium text-muted-foreground">AI Job Search</p>
-        <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">
-          Des candidatures préparées avec vous, jamais inventées.
-        </h1>
-        <p className="text-lg leading-8 text-muted-foreground">
-          Créez votre profil, importez votre CV et gardez le contrôle sur chaque
-          candidature. Une offre acceptée ne sera jamais présentée comme envoyée
-          sans confirmation réelle.
-        </p>
-      </div>
-      <div className="flex flex-wrap gap-3">
-        <Link className="rounded-lg bg-primary px-5 py-3 text-primary-foreground" href="/signup">
-          Créer mon profil
-        </Link>
-        <Link className="rounded-lg border px-5 py-3" href="/login">
-          Se connecter
-        </Link>
-      </div>
+    <main className="overflow-hidden bg-white text-slate-950">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/70 bg-white/90 backdrop-blur-xl"><div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6"><Brand /><nav aria-label="Navigation publique" className="hidden items-center gap-7 text-sm font-medium text-slate-600 md:flex"><a className="hover:text-slate-950" href="#fonctionnement">Fonctionnement</a><a className="hover:text-slate-950" href="#matching">Matching</a><a className="hover:text-slate-950" href="#securite">Contrôle</a><a className="hover:text-slate-950" href="#faq">FAQ</a></nav><div className="flex items-center gap-2"><Link className="hidden rounded-xl px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 sm:block" href="/login">Connexion</Link><Link className="btn-primary min-h-10 px-4 py-2" href="/signup">Créer mon profil <ArrowRight className="size-4" /></Link></div></div></header>
+
+      <section className="relative pt-32 sm:pt-40"><div className="pointer-events-none absolute inset-x-0 -top-48 mx-auto h-[600px] max-w-5xl rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.14),transparent_68%)]" /><div className="relative mx-auto grid max-w-7xl items-center gap-14 px-4 pb-24 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:pb-32"><div className="max-w-2xl"><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700"><Sparkles className="size-3.5" /> Recherche d’emploi assistée, sous votre contrôle</div><h1 className="text-5xl font-semibold leading-[1.02] tracking-[-0.055em] text-slate-950 sm:text-6xl lg:text-7xl">Moins de friction.<br /><span className="text-indigo-600">Plus de candidatures justes.</span></h1><p className="mt-7 max-w-xl text-lg leading-8 text-slate-600">Aply rassemble vos offres, explique leur compatibilité et prépare chaque dossier à partir de vos informations réelles. Vous validez toujours avant d’agir.</p><div className="mt-9 flex flex-col gap-3 sm:flex-row"><Link className="btn-primary px-6" href="/signup">Commencer gratuitement <ArrowRight className="size-4" /></Link><a className="btn-secondary px-6" href="#fonctionnement">Voir comment ça marche</a></div><div className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><Check className="size-4 text-green-600" />Données vérifiables</span><span className="inline-flex items-center gap-2"><Check className="size-4 text-green-600" />Aucun envoi caché</span><span className="inline-flex items-center gap-2"><Check className="size-4 text-green-600" />Contrôle utilisateur</span></div></div><ProductPreview /></div></section>
+
+      <section className="border-y border-slate-200 bg-slate-50 py-24" id="fonctionnement"><div className="mx-auto max-w-7xl px-4 sm:px-6"><div className="max-w-2xl"><p className="eyebrow">Un parcours clair</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">De votre CV à un dossier prêt, en trois étapes.</h2></div><div className="mt-14 grid gap-px overflow-hidden rounded-3xl border border-slate-200 bg-slate-200 lg:grid-cols-3">{[
+        { n: "01", icon: FileText, title: "Construisez votre profil", text: "Importez un PDF ou DOCX, puis vérifiez chaque information extraite avant utilisation." },
+        { n: "02", icon: Target, title: "Comprenez le matching", text: "Chaque score est détaillé : points forts, incompatibilités et données manquantes." },
+        { n: "03", icon: FileCheck2, title: "Validez votre dossier", text: "Relisez le CV, la lettre et les réponses préparées avant toute candidature." },
+      ].map(({ n, icon: Icon, title, text }) => <article className="bg-white p-8 sm:p-10" key={n}><div className="flex items-center justify-between"><span className="grid size-11 place-items-center rounded-2xl bg-indigo-50 text-indigo-600"><Icon className="size-5" /></span><span className="font-mono text-xs text-slate-400">{n}</span></div><h3 className="mt-8 text-xl font-semibold">{title}</h3><p className="mt-3 leading-7 text-slate-600">{text}</p></article>)}</div></div></section>
+
+      <section className="py-24 sm:py-32" id="matching"><div className="mx-auto grid max-w-7xl items-center gap-16 px-4 sm:px-6 lg:grid-cols-2"><div><p className="eyebrow">Matching explicable</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">Un score que vous pouvez vraiment comprendre.</h2><p className="mt-6 text-lg leading-8 text-slate-600">Aply compare l’offre à votre profil sans inventer de compétence. Vous voyez ce qui correspond, ce qui manque et ce qui mérite votre attention.</p><ul className="mt-8 space-y-4">{["Critères satisfaits reliés à votre profil", "Incompatibilités visibles avant de candidater", "Informations absentes signalées, jamais complétées au hasard"].map((text) => <li className="flex items-start gap-3 text-slate-700" key={text}><span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-green-50"><Check className="size-3.5 text-green-600" /></span>{text}</li>)}</ul></div><MatchingPreview /></div></section>
+
+      <section className="bg-slate-950 py-24 text-white sm:py-32"><div className="mx-auto grid max-w-7xl items-center gap-16 px-4 sm:px-6 lg:grid-cols-2"><SwipePreview /><div><p className="text-xs font-semibold tracking-[0.14em] text-indigo-300 uppercase">Décidez sans vous disperser</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">Une offre à la fois. Le bon niveau d’information.</h2><p className="mt-6 text-lg leading-8 text-slate-300">Consultez l’essentiel, ouvrez la source originale, puis acceptez ou refusez. Une acceptation crée un brouillon — jamais une candidature envoyée.</p><div className="mt-8 flex items-center gap-4 text-sm text-slate-300"><span className="grid size-10 place-items-center rounded-full border border-white/15"><X className="size-4" /></span>Refuser <span className="h-px w-8 bg-white/20" /><span className="grid size-10 place-items-center rounded-full bg-indigo-500"><Check className="size-4" /></span>Préparer</div></div></div></section>
+
+      <section className="py-24 sm:py-32" id="securite"><div className="mx-auto max-w-7xl px-4 sm:px-6"><div className="mx-auto max-w-3xl text-center"><p className="eyebrow">Deux modes, aucune ambiguïté</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">Vous savez toujours qui effectue l’envoi.</h2><p className="mt-6 text-lg leading-8 text-slate-600">Le statut affiché reflète une action réelle, pas une intention.</p></div><div className="mt-14 grid gap-6 lg:grid-cols-2"><ModeCard icon={MousePointer2} title="Candidature assistée" text="Aply prépare les documents et les réponses. Vous ouvrez le formulaire officiel et envoyez vous-même votre candidature." points={["Documents téléchargeables", "Réponses copiables", "Déclaration utilisateur identifiée"]} /><ModeCard icon={ShieldCheck} title="Automatisation autorisée" text="Disponible uniquement lorsqu’un employeur a autorisé l’intégration et qu’une confirmation fournisseur vérifiable existe." points={["Autorisation explicite", "Worker sécurisé", "Preuve fournisseur distincte"]} /></div></div></section>
+
+      <section className="border-y border-slate-200 bg-slate-50 py-24" id="faq"><div className="mx-auto max-w-3xl px-4 sm:px-6"><p className="eyebrow">Questions fréquentes</p><h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">Comprendre avant de commencer.</h2><div className="mt-10 divide-y divide-slate-200 border-y border-slate-200">{[
+        ["Aply envoie-t-il automatiquement mes candidatures ?", "Non par défaut. Le parcours assisté vous laisse effectuer l’envoi sur le site employeur. Une automatisation n’est possible que dans un cadre explicitement autorisé et vérifiable."],
+        ["Le contenu de mon CV est-il inventé ou enrichi ?", "Non. La préparation s’appuie sur les informations que vous avez importées et confirmées. Les éléments non attestés sont signalés."],
+        ["Puis-je modifier un dossier avant de l’approuver ?", "Oui. Le CV, la lettre et les réponses restent modifiables jusqu’à votre approbation explicite."],
+        ["Que signifie “envoyée” dans le suivi ?", "Ce statut exige soit votre déclaration explicite après un envoi manuel, soit une confirmation fournisseur vérifiable. Une simple approbation ne suffit jamais."],
+      ].map(([q,a]) => <details className="group py-6" key={q}><summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold">{q}<ChevronRight className="size-4 shrink-0 transition group-open:rotate-90" /></summary><p className="mt-4 max-w-2xl leading-7 text-slate-600">{a}</p></details>)}</div></div></section>
+
+      <section className="px-4 py-24 sm:px-6"><div className="mx-auto max-w-5xl overflow-hidden rounded-[2rem] bg-indigo-600 px-6 py-14 text-center text-white shadow-2xl shadow-indigo-200 sm:px-12 sm:py-20"><WandSparkles className="mx-auto size-7" /><h2 className="mt-5 text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">Votre prochaine candidature peut être plus simple.</h2><p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-indigo-100">Créez un profil vérifiable, découvrez les offres compatibles et gardez la main à chaque étape.</p><Link className="mt-8 inline-flex min-h-12 items-center gap-2 rounded-xl bg-white px-6 font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50" href="/signup">Créer mon profil <ArrowRight className="size-4" /></Link></div></section>
+      <footer className="border-t border-slate-200"><div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6"><Brand /><p className="text-sm text-slate-500">Préparer, vérifier, décider. Toujours dans cet ordre.</p><div className="flex gap-5 text-sm text-slate-500"><Link href="/login">Connexion</Link><Link href="/signup">Créer un profil</Link></div></div></footer>
     </main>
   )
 }
+
+function ProductPreview() {
+  const states = [["À explorer", "Offres"], ["À relire", "Dossiers"], ["Sous contrôle", "Envoi"]]
+  return (
+    <div className="relative mx-auto w-full max-w-2xl">
+      <div className="absolute -inset-8 rounded-[3rem] bg-indigo-200/30 blur-3xl" />
+      <div className="relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-3 shadow-[0_30px_80px_rgba(15,23,42,0.16)]">
+        <div className="flex items-center gap-1.5 border-b border-slate-100 px-3 pb-3">
+          <span className="size-2.5 rounded-full bg-slate-200" /><span className="size-2.5 rounded-full bg-slate-200" /><span className="size-2.5 rounded-full bg-slate-200" />
+        </div>
+        <div className="grid gap-3 p-3 sm:grid-cols-[0.32fr_0.68fr]">
+          <div className="hidden rounded-2xl bg-slate-950 p-4 text-white sm:block">
+            <div className="flex items-center gap-2 font-semibold"><span className="grid size-7 place-items-center rounded-lg bg-indigo-500"><Sparkles className="size-3" /></span>Aply</div>
+            <div className="mt-8 space-y-3 text-xs text-slate-400"><p className="rounded-lg bg-white/10 px-3 py-2 text-white">Vue d’ensemble</p><p className="px-3">Découvrir</p><p className="px-3">Candidatures</p><p className="px-3">Mon profil</p></div>
+          </div>
+          <div className="space-y-3">
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="text-xs font-medium text-slate-500">Aperçu du produit</p><p className="mt-1 text-xl font-semibold">Votre recherche avance.</p>
+              <div className="mt-5 grid grid-cols-3 gap-2">{states.map(([status, label]) => <div className="rounded-xl bg-white p-3 shadow-sm" key={label}><p className="truncate text-xs font-semibold text-slate-800">{status}</p><p className="mt-1 text-[10px] text-slate-500">{label}</p></div>)}</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 p-5">
+              <div className="flex items-start justify-between"><div><p className="text-xs text-slate-500">Entreprise</p><p className="font-semibold">Senior Software Engineer</p></div><span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">Bon match</span></div>
+              <div className="mt-4 h-2 rounded-full bg-slate-100"><div className="h-2 w-4/5 rounded-full bg-indigo-500" /></div>
+              <div className="mt-4 flex gap-2"><span className="rounded-lg bg-slate-100 px-2 py-1 text-[10px]">Remote</span><span className="rounded-lg bg-slate-100 px-2 py-1 text-[10px]">Temps plein</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+function MatchingPreview() { return <div className="surface p-6 sm:p-8"><div className="flex items-center justify-between border-b border-slate-100 pb-6"><div><p className="text-sm text-slate-500">Senior Frontend Engineer</p><p className="mt-1 font-semibold">Analyse de compatibilité</p></div><div className="grid size-16 place-items-center rounded-full bg-indigo-50 text-xl font-semibold text-indigo-700">84</div></div><div className="mt-6 space-y-5"><Meter icon={Check} label="Compétences" value="TypeScript, React" width="88%" color="bg-green-500" /><Meter icon={BriefcaseBusiness} label="Expérience" value="Niveau senior attendu" width="78%" color="bg-indigo-500" /><Meter icon={Gauge} label="Préférences" value="Télétravail compatible" width="92%" color="bg-violet-500" /></div><div className="mt-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-800"><strong>À vérifier :</strong> Kubernetes n’est pas attesté dans votre profil.</div></div> }
+function Meter({ icon: Icon, label, value, width, color }: { icon: typeof Check; label: string; value: string; width: string; color: string }) { return <div><div className="flex items-center justify-between gap-4 text-sm"><span className="flex items-center gap-2 font-medium"><Icon className="size-4 text-slate-400" />{label}</span><span className="text-slate-500">{value}</span></div><div className="mt-2 h-1.5 rounded-full bg-slate-100"><div className={`h-1.5 rounded-full ${color}`} style={{ width }} /></div></div> }
+function SwipePreview() { return <div className="mx-auto w-full max-w-md rotate-[-2deg] rounded-[2rem] bg-white p-6 text-slate-950 shadow-2xl shadow-black/30"><div className="flex items-start justify-between"><div><p className="text-sm text-slate-500">Acme Studio</p><h3 className="mt-1 text-2xl font-semibold">Product Engineer</h3></div><span className="rounded-full bg-green-50 px-3 py-1.5 font-semibold text-green-700">82%</span></div><div className="mt-6 flex gap-2 text-xs"><span className="rounded-full bg-slate-100 px-3 py-1.5">Paris · Hybride</span><span className="rounded-full bg-slate-100 px-3 py-1.5">CDI</span></div><p className="mt-6 line-clamp-4 text-sm leading-6 text-slate-600">Concevoir des expériences produit utiles au sein d’une équipe pluridisciplinaire. TypeScript, React et sens du détail recherchés.</p><div className="mt-6 grid grid-cols-2 gap-3"><div className="rounded-xl border border-slate-200 p-3 text-center text-sm"><X className="mx-auto mb-1 size-4 text-slate-400" />Passer</div><div className="rounded-xl bg-indigo-600 p-3 text-center text-sm font-semibold text-white"><Check className="mx-auto mb-1 size-4" />Préparer</div></div></div> }
+function ModeCard({ icon: Icon, title, text, points }: { icon: typeof ShieldCheck; title: string; text: string; points: string[] }) { return <article className="surface p-7 sm:p-9"><span className="grid size-12 place-items-center rounded-2xl bg-indigo-50 text-indigo-600"><Icon className="size-5" /></span><h3 className="mt-6 text-2xl font-semibold">{title}</h3><p className="mt-3 leading-7 text-slate-600">{text}</p><ul className="mt-6 space-y-3 border-t border-slate-100 pt-6">{points.map((point) => <li className="flex items-center gap-3 text-sm font-medium text-slate-700" key={point}><Check className="size-4 text-green-600" />{point}</li>)}</ul></article> }
