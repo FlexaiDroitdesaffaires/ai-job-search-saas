@@ -1,10 +1,6 @@
-export type EmploymentType =
-  | "full_time"
-  | "part_time"
-  | "contract"
-  | "internship"
-  | "temporary"
-  | "freelance"
+import type { EmploymentType } from "./employment-type"
+
+export type { EmploymentType } from "./employment-type"
 
 export type Seniority = "entry" | "junior" | "mid" | "senior" | "lead" | "executive"
 export type ApplicationMode = "automatic_authorized" | "manual_required" | "unknown" | "closed_invalid"

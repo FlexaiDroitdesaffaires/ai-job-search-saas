@@ -100,7 +100,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
               <form action={savePreferences} className="grid gap-5 sm:grid-cols-2">
                 <TextArea defaultValue={preferences?.target_titles?.join("\n")} label="Postes ciblés" name="targetTitles" /><TextArea defaultValue={preferences?.countries?.join("\n")} label="Pays" name="countries" /><TextArea defaultValue={preferences?.cities?.join("\n")} label="Villes" name="cities" />
                 <ChoiceGroup label="Mode de travail" options={[["remote","Télétravail"],["hybrid","Hybride"],["onsite","Sur site"]]} selected={preferences?.work_modes} name="workModes" />
-                <ChoiceGroup label="Type de contrat" options={[["full_time","CDI / temps plein"],["contract","Contrat"],["freelance","Freelance"],["internship","Stage"]]} selected={preferences?.employment_types} name="employmentTypes" />
+                <ChoiceGroup label="Types de contrat" options={[["permanent","CDI"],["fixed_term","CDD"],["freelance","Freelance / indépendant / prestation"],["temporary","Intérim"],["apprenticeship","Alternance / apprentissage"],["internship","Stage"],["seasonal","Saisonnier"],["occasional","Vacation / mission ponctuelle"]]} selected={preferences?.employment_types} name="employmentTypes" />
                 <div className="grid grid-cols-2 gap-3"><Field defaultValue={preferences?.salary_min} label="Salaire minimum" name="salaryMin" type="number" /><Field defaultValue={preferences?.salary_currency ?? "EUR"} label="Devise" name="salaryCurrency" /></div>
                 <div className="sm:col-span-2"><SubmitButton pendingLabel="Finalisation…">Enregistrer et voir les offres <ArrowRight className="size-4" /></SubmitButton></div>
               </form>

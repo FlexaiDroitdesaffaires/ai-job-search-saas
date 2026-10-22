@@ -3,20 +3,39 @@ import Link from "next/link"
 import { SlidersHorizontal } from "lucide-react"
 
 import { JobDeck, type DiscoverableJob } from "@/components/jobs/job-deck"
+import { JobFilters } from "@/components/jobs/job-filters"
+import { filterCatalogJobs, type JobCatalogFilters } from "@/lib/jobs/filters"
 import { computeJobMatch } from "@/lib/matching/engine"
 import type { CandidateMatchProfile, MatchableJob } from "@/lib/matching/types"
 import { requireUser } from "@/lib/supabase/server"
 
-export default async function JobsPage() {
+type SearchParams = Record<string, string | string[] | undefined>
+
+function values(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value : value ? [value] : []
+}
+
+export default async function JobsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const { supabase, user } = await requireUser()
   if (!user) redirect("/login")
+  const params = await searchParams
+  const salaryRaw = String(Array.isArray(params.salaryMin) ? params.salaryMin[0] ?? "" : params.salaryMin ?? "").trim()
+  const salary = salaryRaw ? Number(salaryRaw) : Number.NaN
+  const filters: JobCatalogFilters = {
+    query: Array.isArray(params.q) ? params.q[0] : params.q,
+    location: Array.isArray(params.location) ? params.location[0] : params.location,
+    employmentTypes: values(params.contract),
+    workModes: values(params.workMode),
+    salaryMin: Number.isFinite(salary) && salary >= 0 ? salary : undefined,
+    seniority: Array.isArray(params.experience) ? params.experience[0] : params.experience,
+  }
 
   const [profileResult, skillsResult, experiencesResult, preferencesResult, jobsResult, decisionsResult] = await Promise.all([
     supabase.from("profiles").select("current_title,experience_level,location").eq("id", user.id).single(),
     supabase.from("skills").select("name").order("name"),
     supabase.from("career_experiences").select("title,description").order("start_date", { ascending: false }),
     supabase.from("job_preferences").select("target_titles,countries,cities,work_modes,salary_min,salary_currency,employment_types,seniority").eq("user_id", user.id).maybeSingle(),
-    supabase.from("job_listings").select("id,title,company,location,country,work_mode,employment_type,seniority,salary_min,salary_max,salary_currency,description,requirements,source_url,provider,posted_at,dedupe_key,application_mode,application_provider,application_reason").eq("is_active", true).eq("is_demo", false).neq("application_mode", "closed_invalid").not("source_url", "is", null).order("posted_at", { ascending: false }).limit(100),
+    supabase.from("job_listings").select("id,title,company,location,country,work_mode,employment_type,seniority,salary_min,salary_max,salary_currency,description,requirements,source_url,provider,posted_at,dedupe_key,application_mode,application_provider,application_reason").eq("is_active", true).eq("is_demo", false).neq("application_mode", "closed_invalid").not("source_url", "is", null).order("posted_at", { ascending: false }).limit(500),
     supabase.from("saved_jobs").select("job_id,job:job_listings(dedupe_key)"),
   ])
 
@@ -47,7 +66,7 @@ export default async function JobsPage() {
     const job = item.job as unknown as { dedupe_key?: string } | Array<{ dedupe_key?: string }> | null
     return Array.isArray(job) ? job[0]?.dedupe_key : job?.dedupe_key
   }).filter(Boolean))
-  const canonicalJobs = [...new Map((jobsResult.data ?? []).map((row) => [row.dedupe_key, row])).values()]
+  const canonicalJobs = filterCatalogJobs([...new Map((jobsResult.data ?? []).map((row) => [row.dedupe_key, row])).values()], filters)
   const jobs = canonicalJobs.map((row) => {
     const matchable: MatchableJob = {
       id: row.id, title: row.title, location: row.location, country: row.country,
@@ -83,6 +102,7 @@ export default async function JobsPage() {
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="eyebrow">Découvrir</p><h1 className="page-title mt-2">Trouvez l’offre qui vous ressemble.</h1><p className="mt-3 max-w-2xl text-slate-600">Une offre à la fois, avec les raisons du matching. Accepter crée un brouillon — aucun envoi n’est effectué.</p></div><Link className="btn-secondary self-start" href="/onboarding#preferences"><SlidersHorizontal className="size-4" />Ajuster mes critères</Link></header>
+      <JobFilters filters={filters} />
       <div className="mt-9">
       <JobDeck initialJobs={visibleJobs} />
       </div>

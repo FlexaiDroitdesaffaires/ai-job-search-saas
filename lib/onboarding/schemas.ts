@@ -34,7 +34,9 @@ export const preferencesSchema = z.object({
   countries: z.array(z.string().trim().min(1).max(100)).max(50),
   cities: z.array(z.string().trim().min(1).max(100)).max(50),
   workModes: z.array(z.enum(["remote", "hybrid", "onsite"])).max(3),
-  employmentTypes: z.array(z.enum(["full_time", "part_time", "contract", "internship", "temporary", "freelance"])).max(6),
+  employmentTypes: z.array(z.enum([
+    "permanent", "fixed_term", "freelance", "temporary", "apprenticeship", "internship", "seasonal", "occasional",
+  ])).max(8),
   salaryMin: z.number().int().min(0).max(10_000_000).nullable(),
   salaryCurrency: z.string().regex(/^[A-Z]{3}$/),
 })

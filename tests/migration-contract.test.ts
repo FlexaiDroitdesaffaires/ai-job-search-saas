@@ -34,6 +34,10 @@ const unifiedSourcesSql = readFileSync(
   resolve(process.cwd(), "supabase/migrations/20261024000000_unified_job_sources.sql"),
   "utf8",
 )
+const frenchContractSql = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20261026000000_french_contract_catalog.sql"),
+  "utf8",
+)
 
 describe("core schema safety contract", () => {
   it("couple le statut applied à une soumission confirmée", () => {
@@ -104,6 +108,16 @@ describe("matching and swipe safety contract", () => {
     expect(unifiedSourcesSql).toContain("pg_advisory_xact_lock")
     expect(unifiedSourcesSql).toContain("existing.dedupe_key = v_job.dedupe_key")
     expect(unifiedSourcesSql).toContain("Job decision is immutable across duplicate sources")
+  })
+})
+
+describe("French contract catalog migration", () => {
+  it("ajoute huit familles sans réécrire les offres existantes", () => {
+    for (const value of ["permanent", "fixed_term", "freelance", "temporary", "apprenticeship", "internship", "seasonal", "occasional"]) {
+      expect(frenchContractSql).toContain(`'${value}'`)
+    }
+    expect(frenchContractSql).not.toMatch(/update\s+public\.job_listings/i)
+    expect(frenchContractSql).not.toMatch(/delete\s+from/i)
   })
 })
 

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest"
 
 import { ingestJobs } from "@/lib/jobs/ingest"
+import { normalizeEmploymentType } from "@/lib/jobs/employment-type"
 import { jobDedupeKey } from "@/lib/jobs/normalize"
 import { classifyApplicationRoute } from "@/lib/jobs/candidability"
 import { jobSourceRegistry } from "@/lib/jobs/source-registry"
 import { parseAiDevJobsRecord } from "@/lib/jobs/sources/aidevjobs"
+import { fetchEasyJobs, parseEasyJobsRecord } from "@/lib/jobs/sources/easyjobs"
 import { parseRemoteOkRecord, plainTextDescription } from "@/lib/jobs/sources/remoteok"
 import type { JobListingRepository, SourceJob, VerifiedJob } from "@/lib/jobs/types"
 import { verifyJobUrl } from "@/lib/jobs/verify-url"
@@ -68,6 +70,57 @@ describe("job ingestion", () => {
       title: "Senior TypeScript—Engineer",
       location: "remote",
     }))
+  })
+
+  it("déduplique une localisation française avec ou sans pays", () => {
+    expect(jobDedupeKey({ company: "Exemple", title: "Comptable", location: "Paris, France" }))
+      .toBe(jobDedupeKey({ company: "Exemple", title: "Comptable", location: "Paris" }))
+  })
+
+  it("normalise les huit contrats français sans transformer un temps plein en CDI", () => {
+    expect(normalizeEmploymentType({ contractType: "CDI" })).toBe("permanent")
+    expect(normalizeEmploymentType({ contractType: "CDD" })).toBe("fixed_term")
+    expect(normalizeEmploymentType({ title: "Consultant freelance" })).toBe("freelance")
+    expect(normalizeEmploymentType({ contractType: "Intérim" })).toBe("temporary")
+    expect(normalizeEmploymentType({ isWorkStudy: true })).toBe("apprenticeship")
+    expect(normalizeEmploymentType({ title: "Stage marketing" })).toBe("internship")
+    expect(normalizeEmploymentType({ title: "Serveur saisonnier" })).toBe("seasonal")
+    expect(normalizeEmploymentType({ title: "Médecin vacataire" })).toBe("occasional")
+    expect(normalizeEmploymentType({ employmentType: "Temps-plein" })).toBeUndefined()
+    expect(normalizeEmploymentType({ employmentType: "FullTime" })).toBeUndefined()
+  })
+
+  it("normalise EasyJobs en conservant le lien attribué et un contrat inconnu", () => {
+    const base = {
+      id: "128/1/job", title: "Responsable de site", company: "Exemple SA", location: "Lyon",
+      work_hours: "Temps plein", salary: null, published_at: "2026-10-22 10:00:00",
+      description_excerpt: "Piloter le site.", company_logo_url: null,
+      job_url: "https://www.easyjobs.fr/offre-d-emploi/128/1/job/responsable.html?mtm_source=easyjobs_api",
+      api_url: "https://api.easyjobs.fr/public/v1/jobs/128/1/job",
+    }
+    expect(parseEasyJobsRecord({ ...base, contract_type: "CDI" })).toMatchObject({
+      provider: "easyjobs", employmentType: "permanent", country: "France",
+      applicationMode: "manual_required", applicationUrl: base.job_url,
+    })
+    expect(parseEasyJobsRecord({ ...base, contract_type: "Autre" })?.employmentType).toBeUndefined()
+  })
+
+  it("lit EasyJobs anonymement avec pagination sans clé", async () => {
+    const fetcher = async () => new Response(JSON.stringify({
+      data: [{
+        id: "128/1/job", title: "Aide-soignant", company: "Clinique", location: "Paris",
+        contract_type: "CDD", work_hours: "Temps plein", salary: null,
+        published_at: "2026-10-22 10:00:00", description_excerpt: "Accompagner les patients.",
+        company_logo_url: null,
+        job_url: "https://www.easyjobs.fr/offre-d-emploi/128/1/job/aide-soignant.html?mtm_source=easyjobs_api",
+        api_url: "https://api.easyjobs.fr/public/v1/jobs/128/1/job",
+      }],
+      pagination: { page: 1, limit: 25, returned: 1, total_results: 57_186, total_pages: 2288, has_next_page: true },
+    }), { status: 200, headers: { "content-type": "application/json" } })
+    const result = await fetchEasyJobs({ contractType: "CDD", limit: 25 }, fetcher as typeof fetch)
+    expect(result.jobs).toHaveLength(1)
+    expect(result.jobs[0]?.employmentType).toBe("fixed_term")
+    expect(result.pagination.total_results).toBe(57_186)
   })
 
   it("filtre les offres périmées, URL invalides et doublons de batch", async () => {
@@ -134,8 +187,10 @@ describe("job ingestion", () => {
 
   it("conserve uniquement les sources compatibles avec le produit", () => {
     expect(jobSourceRegistry.filter((source) => source.decision === "active").map((source) => source.id))
-      .toEqual(["remoteok", "aidevjobs"])
+      .toEqual(["easyjobs", "remoteok", "aidevjobs"])
     expect(jobSourceRegistry.find((source) => source.id === "weworkremotely")?.decision).toBe("blocked")
+    expect(jobSourceRegistry.find((source) => source.id === "greenhouse-public-boards")?.decision).toBe("blocked")
+    expect(jobSourceRegistry.find((source) => source.id === "ashby-public-boards")?.decision).toBe("blocked")
   })
 
   it("conserve une URL employeur protégée sans la déclarer ouverte", async () => {

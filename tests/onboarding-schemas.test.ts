@@ -25,4 +25,13 @@ describe("onboarding validation", () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it("accepte plusieurs familles de contrats français", () => {
+    const result = preferencesSchema.safeParse({
+      targetTitles: [], countries: ["France"], cities: [], workModes: ["onsite", "hybrid"],
+      employmentTypes: ["permanent", "fixed_term", "freelance", "temporary", "apprenticeship", "internship", "seasonal", "occasional"],
+      salaryMin: 30_000, salaryCurrency: "EUR",
+    })
+    expect(result.success).toBe(true)
+  })
 })

@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react"
 import { ArrowLeft, ArrowRight, Banknote, BriefcaseBusiness, Check, CircleAlert, ExternalLink, MapPin, RotateCcw, Sparkles, Wifi, X } from "lucide-react"
 
 import { decideJob } from "@/app/dashboard/jobs/actions"
+import { employmentTypeLabel } from "@/lib/jobs/employment-type"
 import type { MatchResult } from "@/lib/matching/types"
 
 export type DiscoverableJob = {
@@ -96,7 +97,7 @@ export function JobDeck({ initialJobs }: { initialJobs: DiscoverableJob[] }) {
             <div className="mt-6 flex flex-wrap gap-2 text-sm text-slate-600">
               <Pill icon={MapPin}>{job.location || job.country || "Localisation inconnue"}</Pill>
               <Pill icon={Wifi}>{workModeLabel(job.work_mode)}</Pill>
-              <Pill icon={BriefcaseBusiness}>{employmentLabel(job.employment_type)}</Pill>
+              <Pill icon={BriefcaseBusiness}>{employmentTypeLabel(job.employment_type)}</Pill>
               <Pill icon={Banknote}>{salary(job)}</Pill>
             </div>
 
@@ -143,14 +144,13 @@ function Score({ value }: { value: number }) {
 function Pill({ icon: Icon, children }: { icon: typeof MapPin; children: React.ReactNode }) { return <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5"><Icon className="size-3.5 text-slate-400" />{children}</span> }
 
 function sourceLabel(provider: string) {
+  if (provider === "easyjobs") return "EasyJobs"
   if (provider === "remoteok") return "Remote OK"
   if (provider === "aidevjobs") return "AI Dev Jobs"
   return provider
 }
 
 function workModeLabel(value: string | null) { return value === "remote" ? "Télétravail" : value === "hybrid" ? "Hybride" : value === "onsite" ? "Sur site" : "Mode non précisé" }
-function employmentLabel(value: string | null) { return value === "full_time" ? "Temps plein" : value === "contract" ? "Contrat" : value === "freelance" ? "Freelance" : value === "internship" ? "Stage" : "Contrat non précisé" }
-
 function applicationLabel(mode: string) {
   if (mode === "automatic_authorized") return "Automatisation autorisée"
   if (mode === "manual_required") return "Candidature assistée"

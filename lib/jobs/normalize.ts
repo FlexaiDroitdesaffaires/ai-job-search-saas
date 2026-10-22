@@ -13,7 +13,8 @@ function canonical(value: string | undefined) {
 }
 
 export function jobDedupeKey(job: Pick<SourceJob, "company" | "title" | "location">) {
-  const identity = [canonical(job.company), canonical(job.title), canonical(job.location)].join("|")
+  const location = canonical(job.location).replace(/\b(france|fr)\b/g, " ").replace(/\s+/g, " ").trim()
+  const identity = [canonical(job.company), canonical(job.title), location].join("|")
   return createHash("sha256").update(identity).digest("hex")
 }
 

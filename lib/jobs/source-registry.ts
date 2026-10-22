@@ -15,6 +15,15 @@ export type JobSourceRegistryEntry = {
 
 export const jobSourceRegistry: readonly JobSourceRegistryEntry[] = [
   {
+    id: "easyjobs", name: "EasyJobs", catalogUrl: "https://api.easyjobs.fr/public/docs/",
+    interface: "json_api", commercialUse: "allowed_with_conditions",
+    redistribution: "allowed_with_attribution", geography: "France, tous secteurs",
+    freshness: "Offres actives; filtres 1, 3, 7 ou 30 jours",
+    atsCompatibility: "Lien EasyJobs attribué obligatoire; aucune URL ATS externe exposée",
+    cost: "Lecture anonyme gratuite, 60 requêtes/minute observées", decision: "active",
+    reason: "Usage applicatif autorisé avec attribution; import plafonné, sans reconstruction substantielle de la base.",
+  },
+  {
     id: "remoteok", name: "Remote OK", catalogUrl: "https://remoteok.com/api",
     interface: "json_api", commercialUse: "allowed_with_conditions",
     redistribution: "allowed_with_attribution", geography: "Monde, télétravail",
@@ -62,5 +71,19 @@ export const jobSourceRegistry: readonly JobSourceRegistryEntry[] = [
     atsCompatibility: "Nombreuses sources ATS; candidature parfois via JOIN",
     cost: "API publique gratuite, offre privée payante", decision: "blocked",
     reason: "La clause API exige l’attribution mais la licence générale limite l’usage commercial; accord requis.",
+  },
+  {
+    id: "greenhouse-public-boards", name: "Greenhouse Job Board API", catalogUrl: "https://developers.greenhouse.io/job-board.html",
+    interface: "json_api", commercialUse: "requires_permission", redistribution: "unclear",
+    geography: "Boards employeurs, dont France", freshness: "Jobs publiés et updated_at fournis",
+    atsCompatibility: "Lien employeur direct; GET public sans authentification", cost: "Lecture publique gratuite",
+    decision: "blocked", reason: "API publiquement lisible, mais aucune licence générale de republication commerciale multi-employeurs identifiée.",
+  },
+  {
+    id: "ashby-public-boards", name: "Ashby Job Postings API", catalogUrl: "https://developers.ashbyhq.com/docs/public-job-posting-api",
+    interface: "json_api", commercialUse: "requires_permission", redistribution: "unclear",
+    geography: "Boards employeurs, dont France", freshness: "Postes publiés avec publishedAt",
+    atsCompatibility: "Liens jobUrl et applyUrl directs", cost: "Lecture publique gratuite par board",
+    decision: "blocked", reason: "Le flux public vise la page carrière de sa propre organisation; l’agrégation partenaire passe par un flux dédié avec opt-in employeur.",
   },
 ] as const
