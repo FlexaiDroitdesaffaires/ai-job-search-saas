@@ -106,7 +106,10 @@ describe("job ingestion", () => {
   })
 
   it("lit EasyJobs anonymement avec pagination sans clé", async () => {
-    const fetcher = async () => new Response(JSON.stringify({
+    let requestedUrl = ""
+    const fetcher = async (input: URL | RequestInfo) => {
+      requestedUrl = input.toString()
+      return new Response(JSON.stringify({
       data: [{
         id: "128/1/job", title: "Aide-soignant", company: "Clinique", location: "Paris",
         contract_type: "CDD", work_hours: "Temps plein", salary: null,
@@ -116,11 +119,34 @@ describe("job ingestion", () => {
         api_url: "https://api.easyjobs.fr/public/v1/jobs/128/1/job",
       }],
       pagination: { page: 1, limit: 25, returned: 1, total_results: 57_186, total_pages: 2288, has_next_page: true },
-    }), { status: 200, headers: { "content-type": "application/json" } })
-    const result = await fetchEasyJobs({ contractType: "CDD", limit: 25 }, fetcher as typeof fetch)
+      }), { status: 200, headers: { "content-type": "application/json" } })
+    }
+    const result = await fetchEasyJobs({
+      contractType: "CDD", experience: "Débutant accepté", salaryMin: 30_000,
+      remoteWorkMode: "HYBRID", page: 2, limit: 25,
+    }, fetcher as typeof fetch)
     expect(result.jobs).toHaveLength(1)
     expect(result.jobs[0]?.employmentType).toBe("fixed_term")
     expect(result.pagination.total_results).toBe(57_186)
+    expect(requestedUrl).toContain("contract_type=CDD")
+    expect(requestedUrl).toContain("experience=D%C3%A9butant+accept%C3%A9")
+    expect(requestedUrl).toContain("salary_min=30000")
+    expect(requestedUrl).toContain("remote_work_mode=HYBRID")
+    expect(requestedUrl).toContain("page=2")
+  })
+
+  it("uses private partner headers together and surfaces Retry-After", async () => {
+    let headers: HeadersInit | undefined
+    let cache: RequestCache | undefined
+    const fetcher = async (_input: URL | RequestInfo, init?: RequestInit) => {
+      headers = init?.headers
+      cache = init?.cache
+      return new Response(null, { status: 429, headers: { "retry-after": "17" } })
+    }
+    await expect(fetchEasyJobs({}, fetcher as typeof fetch, { partnerId: "partner", partnerKey: "secret" }))
+      .rejects.toMatchObject({ status: 429, retryAfterSeconds: 17 })
+    expect(headers).toMatchObject({ "X-EasyJobs-Partner": "partner", "X-EasyJobs-Partner-Key": "secret" })
+    expect(cache).toBe("no-store")
   })
 
   it("filtre les offres périmées, URL invalides et doublons de batch", async () => {

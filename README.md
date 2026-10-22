@@ -21,9 +21,15 @@ corepack pnpm exec supabase status
 corepack pnpm dev
 ```
 
-Reporter dans `.env.local` l'API URL et la clé publique `anon` affichées par
-`supabase status`. Ne jamais placer de clé `service_role` dans une variable
-`NEXT_PUBLIC_*` ni dans le navigateur.
+Reporter dans `.env.local` l'API URL, la clé publique `anon` et la clé
+`service_role` affichées par `supabase status`. La clé de service sert uniquement
+au serveur à mettre en cache les pages EasyJobs réellement consultées afin que
+le swipe conserve un `job_id` durable. Ne jamais la placer dans une variable
+`NEXT_PUBLIC_*`, un composant client ou le navigateur.
+
+Les identifiants `EASYJOBS_PARTNER_ID` et `EASYJOBS_PARTNER_KEY` restent
+optionnels tant qu'EasyJobs n'a pas validé le partenariat. Ils doivent toujours
+être configurés ensemble et uniquement côté serveur.
 
 `supabase:reset` utilise explicitement `--local` et détruit uniquement la base
 locale ciblée. Vérifier que les URL affichées par `supabase status` utilisent
@@ -66,8 +72,8 @@ doit conserver son lien source. Voir [`docs/JOB_INGESTION.md`](./docs/JOB_INGEST
 
 - inscription, connexion, déconnexion et renouvellement SSR de session ;
 - routes `/onboarding` et `/dashboard` protégées ;
-- découverte d’offres réelles sur `/dashboard/jobs`, matching explicable et
-  attribution Remote OK ;
+- découverte d’offres réelles sur `/dashboard/jobs`, recherche EasyJobs
+  ciblée/paginée, matching explicable et attribution de chaque source ;
 - refus persistant sans candidature et acceptation atomique créant uniquement
   un brouillon de candidature ;
 - préparation déterministe automatique après acceptation lorsque le profil et

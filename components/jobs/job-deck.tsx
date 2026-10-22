@@ -38,7 +38,7 @@ function salary(job: DiscoverableJob) {
   return `${range} ${job.salary_currency ?? "devise non précisée"}`
 }
 
-export function JobDeck({ initialJobs }: { initialJobs: DiscoverableJob[] }) {
+export function JobDeck({ initialJobs, emptyMessage = "Aucune nouvelle offre disponible pour le moment." }: { initialJobs: DiscoverableJob[]; emptyMessage?: string }) {
   const [jobs, setJobs] = useState(initialJobs)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -67,7 +67,7 @@ export function JobDeck({ initialJobs }: { initialJobs: DiscoverableJob[] }) {
   }
 
   if (!job) {
-    return <section className="surface px-6 py-16 text-center"><span className="mx-auto grid size-14 place-items-center rounded-2xl bg-indigo-50 text-indigo-600"><Check className="size-6" /></span><h2 className="mt-5 text-2xl font-semibold tracking-tight">Vous avez tout examiné</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Les nouvelles offres réelles apparaîtront ici après la prochaine ingestion.</p></section>
+    return <section className="surface px-6 py-16 text-center"><span className="mx-auto grid size-14 place-items-center rounded-2xl bg-indigo-50 text-indigo-600"><Check className="size-6" /></span><h2 className="mt-5 text-2xl font-semibold tracking-tight">Vous avez tout examiné</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{emptyMessage}</p></section>
   }
 
   return (

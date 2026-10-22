@@ -21,6 +21,20 @@ est autorisé, et affiche l’attribution AI Dev Jobs. Le registre et les motifs
 d’exclusion des autres sources sont détaillés dans
 [`JOB_SOURCE_REGISTRY.md`](./JOB_SOURCE_REGISTRY.md).
 
+EasyJobs est interrogé à la demande depuis `/dashboard/jobs`. Les critères
+envoyés sont limités aux paramètres documentés par l'API : métier, lieu,
+contrat ou temps de travail lorsqu'une seule valeur est sélectionnée, salaire
+minimum, expérience, mode de travail, alternance, fraîcheur et page. Une page
+contient au maximum 25 offres. Les réponses anonymes sont mises en cache cinq
+minutes ; les réponses d'un partenaire identifié restent `private, no-store`
+conformément au contrat fournisseur.
+
+Seules les lignes de la page réellement consultée sont upsertées pour fournir
+les UUID nécessaires au matching, au swipe et au suivi. Ce cache opérationnel
+ne parcourt ni ne copie le catalogue complet. `job_url` reste inchangée et
+visible comme URL attribuée ; EasyJobs demeure le point de confirmation de la
+disponibilité et des modalités de candidature.
+
 ## Garanties du connecteur
 
 - exécution en ligne de commande limitée à Supabase local ;
@@ -36,6 +50,9 @@ d’exclusion des autres sources sont détaillés dans
 - conservation de `posted_at`, `last_seen_at`, du statut HTTP et de la date de
   vérification ;
 - aucune création de candidature et aucun changement de statut utilisateur.
+- limitation applicative à 12 recherches par utilisateur et 50 sorties réseau
+  par minute et par processus, en dessous de la limite fournisseur documentée ;
+- repli explicite sur les autres sources en cas de 429 ou d'indisponibilité.
 
 Une absence dans un lot limité ne désactive pas une offre : `is_active` ne sera
 mis à `false` qu'après l'implémentation d'une réconciliation complète de la
