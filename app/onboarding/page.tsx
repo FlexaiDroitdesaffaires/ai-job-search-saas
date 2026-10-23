@@ -15,10 +15,10 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
   const params = await searchParams
   const [profileResult, experiencesResult, skillsResult, preferencesResult, resumesResult] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).single(),
-    supabase.from("career_experiences").select("*").order("start_date", { ascending: false }),
-    supabase.from("skills").select("name").order("name"),
+    supabase.from("career_experiences").select("*").eq("user_id", user.id).order("start_date", { ascending: false }),
+    supabase.from("skills").select("name").eq("user_id", user.id).order("name"),
     supabase.from("job_preferences").select("*").eq("user_id", user.id).single(),
-    supabase.from("resumes").select("id,file_name,parse_status,parsed_data").order("created_at", { ascending: false }).limit(1),
+    supabase.from("resumes").select("id,file_name,parse_status,parsed_data").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1),
   ])
   const profile = profileResult.data
   const preferences = preferencesResult.data

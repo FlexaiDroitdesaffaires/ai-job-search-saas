@@ -29,7 +29,7 @@ export default async function ApplicationPreparationPage({
 
   const { data: dossierRows, error: dossierError } = await supabase.from("application_dossiers")
     .select("id,version,state,content,content_hash,missing_fields,prepared_at,approved_at")
-    .eq("application_id", id).order("version", { ascending: false }).limit(1)
+    .eq("application_id", id).eq("user_id", user.id).order("version", { ascending: false }).limit(1)
   const dossier = dossierRows?.[0] ?? null
   const parsed = dossier ? applicationDossierSchema.safeParse(dossier.content) : null
   const content = parsed?.success ? parsed.data : null
@@ -37,12 +37,12 @@ export default async function ApplicationPreparationPage({
   const locked = application.prep_state === "submitting" || application.prep_state === "submitted"
   const { data: submissionRows } = await supabase.from("application_submissions")
     .select("id,state,method,environment,provider,attempt_count,error_message,provider_submission_id,tracking_url,started_at,confirmed_at")
-    .eq("application_id", id).order("started_at", { ascending: false }).limit(1)
+    .eq("application_id", id).eq("user_id", user.id).order("started_at", { ascending: false }).limit(1)
   const submission = submissionRows?.[0] ?? null
   const [{ data: job }, { data: assisted }, { data: events }] = await Promise.all([
     supabase.from("job_listings").select("source_url,application_url").eq("id", application.job_id).maybeSingle(),
-    supabase.from("assisted_application_states").select("official_url,opened_at,user_decision,decided_at").eq("application_id", id).maybeSingle(),
-    supabase.from("application_events").select("id,event_type,created_at").eq("application_id", id).order("created_at", { ascending: false }).limit(12),
+    supabase.from("assisted_application_states").select("official_url,opened_at,user_decision,decided_at").eq("application_id", id).eq("user_id", user.id).maybeSingle(),
+    supabase.from("application_events").select("id,event_type,created_at").eq("application_id", id).eq("user_id", user.id).order("created_at", { ascending: false }).limit(12),
   ])
   const officialUrl = verifiedOfficialUrl({
     storedUrl: application.job_url,

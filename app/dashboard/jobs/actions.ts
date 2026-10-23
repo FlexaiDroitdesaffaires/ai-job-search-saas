@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { prepareApplicationDossierForUser } from "@/lib/applications/prepare-server"
+import { takeSensitiveAction } from "@/lib/security/rate-limit"
 import { requireUser } from "@/lib/supabase/server"
 
 export type JobDecisionResult =
@@ -19,12 +20,15 @@ export async function decideJob(jobId: string, decision: "saved" | "skipped"): P
 
   const { supabase, user } = await requireUser()
   if (!user) return { ok: false, message: "Votre session a expiré. Reconnectez-vous." }
+  if (!takeSensitiveAction("job_decision", user.id).allowed) {
+    return { ok: false, message: "Trop de décisions rapprochées. Réessayez plus tard." }
+  }
 
   const { data, error } = await supabase.rpc("decide_job", {
     p_job_id: jobId,
     p_decision: decision,
   })
-  if (error) return { ok: false, message: error.message }
+  if (error) return { ok: false, message: "La décision n’a pas pu être enregistrée." }
 
   const response = data as { application_id?: string | null; replayed?: boolean } | null
   const applicationId = response?.application_id ?? null

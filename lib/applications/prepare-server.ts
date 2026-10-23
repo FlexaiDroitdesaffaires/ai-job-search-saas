@@ -33,14 +33,14 @@ export async function prepareApplicationDossierForUser(
 
   const [profileResult, skillsResult, experiencesResult, preferencesResult, resumeResult, jobResult] = await Promise.all([
     supabase.from("profiles").select("id,email,full_name,phone,location,linkedin_url,current_title,experience_level,summary").eq("id", user.id).single(),
-    supabase.from("skills").select("id,name").order("name"),
-    supabase.from("career_experiences").select("id,title,company,location,start_date,end_date,is_current,description").order("start_date", { ascending: false }),
+    supabase.from("skills").select("id,name").eq("user_id", user.id).order("name"),
+    supabase.from("career_experiences").select("id,title,company,location,start_date,end_date,is_current,description").eq("user_id", user.id).order("start_date", { ascending: false }),
     supabase.from("job_preferences").select("target_titles,countries,cities,work_modes,salary_min,salary_currency,employment_types,seniority").eq("user_id", user.id).maybeSingle(),
-    supabase.from("resumes").select("id,title,parsed_data,parse_status,is_primary").eq("parse_status", "parsed").order("is_primary", { ascending: false }).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("resumes").select("id,title,parsed_data,parse_status,is_primary").eq("user_id", user.id).eq("parse_status", "parsed").order("is_primary", { ascending: false }).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("job_listings").select("id,title,company,location,country,work_mode,employment_type,seniority,salary_min,salary_max,salary_currency,description,requirements,source_url").eq("id", applicationResult.data.job_id).single(),
   ])
   const failed = [profileResult, skillsResult, experiencesResult, preferencesResult, resumeResult, jobResult].find((result) => result.error)
-  if (failed?.error) return { ok: false, message: `Préparation impossible : ${failed.error.message}` }
+  if (failed?.error) return { ok: false, message: "Préparation impossible. Réessayez plus tard." }
   if (!profileResult.data?.full_name) return { ok: false, message: "Renseignez votre nom dans le profil avant la préparation." }
   if (!resumeResult.data) return { ok: false, message: "Importez et validez un CV avant la préparation." }
   if (!jobResult.data) return { ok: false, message: "Offre introuvable." }
@@ -80,5 +80,5 @@ export async function prepareApplicationDossierForUser(
     } : null,
   })
   const { error } = await persistApplicationDossier(supabase, applicationId, resumeResult.data.id, content)
-  return error ? { ok: false, message: `Le dossier n’a pas pu être enregistré : ${error.message}` } : { ok: true }
+  return error ? { ok: false, message: "Le dossier n’a pas pu être enregistré." } : { ok: true }
 }

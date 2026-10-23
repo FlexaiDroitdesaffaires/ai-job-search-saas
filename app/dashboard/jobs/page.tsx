@@ -47,13 +47,13 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
 
   const [profileResult, skillsResult, experiencesResult, preferencesResult] = await Promise.all([
     supabase.from("profiles").select("current_title,experience_level,location").eq("id", user.id).single(),
-    supabase.from("skills").select("name").order("name"),
-    supabase.from("career_experiences").select("title,description").order("start_date", { ascending: false }),
+    supabase.from("skills").select("name").eq("user_id", user.id).order("name"),
+    supabase.from("career_experiences").select("title,description").eq("user_id", user.id).order("start_date", { ascending: false }),
     supabase.from("job_preferences").select("target_titles,countries,cities,work_modes,salary_min,salary_currency,employment_types,seniority").eq("user_id", user.id).maybeSingle(),
   ])
   const profileFailure = [profileResult, skillsResult, experiencesResult, preferencesResult].find((result) => result.error)
   if (profileFailure?.error) {
-    return <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6"><p className="rounded-2xl bg-red-50 p-4 text-red-700">Impossible de charger votre profil : {profileFailure.error.message}</p></main>
+    return <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6"><p className="rounded-2xl bg-red-50 p-4 text-red-700">Impossible de charger votre profil. Réessayez plus tard.</p></main>
   }
 
   const preferences = preferencesResult.data
@@ -81,12 +81,12 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     .limit(100)
   const [localJobsResult, decisionsResult, dynamicResult] = await Promise.all([
     localJobsQuery,
-    supabase.from("saved_jobs").select("job_id,job:job_listings(dedupe_key)"),
+    supabase.from("saved_jobs").select("job_id,job:job_listings(dedupe_key)").eq("user_id", user.id),
     searchAndCacheEasyJobs(user.id, easyJobsPlan),
   ])
   const catalogFailure = [localJobsResult, decisionsResult].find((result) => result.error)
   if (catalogFailure?.error) {
-    return <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6"><p className="rounded-2xl bg-red-50 p-4 text-red-700">Impossible de charger les offres : {catalogFailure.error.message}</p></main>
+    return <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6"><p className="rounded-2xl bg-red-50 p-4 text-red-700">Impossible de charger les offres. Réessayez plus tard.</p></main>
   }
 
   const profile: CandidateMatchProfile = {
@@ -141,7 +141,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       { onConflict: "user_id,job_id" },
     )
     if (error) {
-      return <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6"><p className="rounded-2xl bg-red-50 p-4 text-red-700">Le matching n’a pas pu être enregistré : {error.message}</p></main>
+      return <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6"><p className="rounded-2xl bg-red-50 p-4 text-red-700">Le matching n’a pas pu être enregistré. Réessayez plus tard.</p></main>
     }
   }
 

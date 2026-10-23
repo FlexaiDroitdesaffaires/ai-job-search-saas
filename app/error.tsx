@@ -4,7 +4,7 @@ import { useEffect } from "react"
 
 export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
-    console.error("Application error", error.digest ?? error.message)
+    console.error("Application error", error.digest ? { digest: error.digest } : { code: "CLIENT_RENDER_ERROR" })
   }, [error])
 
   return (

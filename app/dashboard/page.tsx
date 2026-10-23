@@ -11,9 +11,9 @@ export default async function DashboardPage() {
   const { supabase, user } = await requireUser()
   if (!user) redirect("/login")
   const [applicationsResult, profileResult, matchesResult] = await Promise.all([
-    supabase.from("applications").select("id,job_id,company,job_title,prep_state,submission_method,submission_evidence,submitted_at,created_at,updated_at").not("job_id", "is", null).order("updated_at", { ascending: false }),
+    supabase.from("applications").select("id,job_id,company,job_title,prep_state,submission_method,submission_evidence,submitted_at,created_at,updated_at").eq("user_id", user.id).not("job_id", "is", null).order("updated_at", { ascending: false }),
     supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
-    supabase.from("job_matches").select("score,job_id").order("score", { ascending: false }).limit(100),
+    supabase.from("job_matches").select("score,job_id").eq("user_id", user.id).order("score", { ascending: false }).limit(100),
   ])
   const applications = applicationsResult.data
   const applicationIds = applications?.map((item) => item.id) ?? []
@@ -24,9 +24,9 @@ export default async function DashboardPage() {
     : Promise.resolve({ data: [] as Recommendation["job"][] })
   const [jobsResult, submissionsResult, dossiersResult, eventsResult, recommendationJobsResult] = applicationIds.length ? await Promise.all([
     supabase.from("job_listings").select("id,provider,application_mode").in("id", jobIds),
-    supabase.from("application_submissions").select("application_id,state,method,environment,provider,started_at").in("application_id", applicationIds).order("started_at", { ascending: false }),
-    supabase.from("application_dossiers").select("application_id,state,version").in("application_id", applicationIds).in("state", ["draft", "approved"]),
-    supabase.from("application_events").select("id,application_id,event_type,created_at").in("application_id", applicationIds).order("created_at", { ascending: false }),
+    supabase.from("application_submissions").select("application_id,state,method,environment,provider,started_at").eq("user_id", user.id).in("application_id", applicationIds).order("started_at", { ascending: false }),
+    supabase.from("application_dossiers").select("application_id,state,version").eq("user_id", user.id).in("application_id", applicationIds).in("state", ["draft", "approved"]),
+    supabase.from("application_events").select("id,application_id,event_type,created_at").eq("user_id", user.id).in("application_id", applicationIds).order("created_at", { ascending: false }),
     recommendationJobsPromise,
   ]) : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }, await recommendationJobsPromise]
   const jobs = new Map((jobsResult.data ?? []).map((item) => [item.id, item]))
@@ -83,7 +83,7 @@ export default async function DashboardPage() {
 
       <section className="mt-12 scroll-mt-6" id="applications">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="eyebrow">Suivi réel</p><h2 className="section-title mt-2">Mes candidatures</h2><p className="mt-2 text-sm text-slate-500">Une ligne par offre acceptée, protégée contre les doublons.</p></div></div>
-        {applicationsResult.error ? <p className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-700">Chargement impossible : {applicationsResult.error.message}</p> : rows.length ? <><div className="mt-6 space-y-4 lg:hidden">{rows.map((row) => <ApplicationCard key={row.application.id} row={row} />)}</div><div className="surface mt-6 hidden overflow-x-auto lg:block"><table className="w-full min-w-[1120px] border-collapse text-left text-sm"><thead className="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase"><tr><th className="p-4">Entreprise / poste</th><th className="p-4">Date</th><th className="p-4">Statut</th><th className="p-4">Source</th><th className="p-4">Documents</th><th className="p-4">Mode</th><th className="p-4">Confirmation</th><th className="p-4">Historique</th><th className="p-4"><span className="sr-only">Action</span></th></tr></thead><tbody>{rows.map((row) => <ApplicationTableRow key={row.application.id} row={row} />)}</tbody></table></div></> : <div className="surface mt-6 p-10 text-center"><BriefcaseBusiness className="mx-auto size-7 text-slate-300" /><h3 className="mt-4 font-semibold">Aucune candidature en cours</h3><p className="mt-2 text-sm text-slate-500">Acceptez une offre compatible pour créer votre premier brouillon.</p><Link className="btn-secondary mt-5" href="/dashboard/jobs">Découvrir les offres</Link></div>}
+        {applicationsResult.error ? <p className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-700">Chargement impossible. Réessayez plus tard.</p> : rows.length ? <><div className="mt-6 space-y-4 lg:hidden">{rows.map((row) => <ApplicationCard key={row.application.id} row={row} />)}</div><div className="surface mt-6 hidden overflow-x-auto lg:block"><table className="w-full min-w-[1120px] border-collapse text-left text-sm"><thead className="bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase"><tr><th className="p-4">Entreprise / poste</th><th className="p-4">Date</th><th className="p-4">Statut</th><th className="p-4">Source</th><th className="p-4">Documents</th><th className="p-4">Mode</th><th className="p-4">Confirmation</th><th className="p-4">Historique</th><th className="p-4"><span className="sr-only">Action</span></th></tr></thead><tbody>{rows.map((row) => <ApplicationTableRow key={row.application.id} row={row} />)}</tbody></table></div></> : <div className="surface mt-6 p-10 text-center"><BriefcaseBusiness className="mx-auto size-7 text-slate-300" /><h3 className="mt-4 font-semibold">Aucune candidature en cours</h3><p className="mt-2 text-sm text-slate-500">Acceptez une offre compatible pour créer votre premier brouillon.</p><Link className="btn-secondary mt-5" href="/dashboard/jobs">Découvrir les offres</Link></div>}
       </section>
     </main>
   )

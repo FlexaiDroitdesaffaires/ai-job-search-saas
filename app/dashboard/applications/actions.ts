@@ -8,6 +8,7 @@ import { type AssistedDecision } from "@/lib/applications/assisted"
 import { applicationDossierSchema } from "@/lib/applications/dossier-schema"
 import { applyUserEdits } from "@/lib/applications/preparation"
 import { persistApplicationDossier, prepareApplicationDossierForUser } from "@/lib/applications/prepare-server"
+import { takeSensitiveAction } from "@/lib/security/rate-limit"
 import { requireUser } from "@/lib/supabase/server"
 
 const idSchema = z.uuid()
@@ -19,6 +20,8 @@ function destination(applicationId: string, key: "error" | "saved" | "approved" 
 async function authenticated() {
   const result = await requireUser()
   if (!result.user) redirect("/login")
+  const rateLimit = takeSensitiveAction("application_action", result.user.id)
+  if (!rateLimit.allowed) redirect("/dashboard?error=Trop%20de%20tentatives.%20R%C3%A9essayez%20plus%20tard.")
   return { supabase: result.supabase, user: result.user }
 }
 
@@ -58,7 +61,7 @@ export async function saveApplicationDossier(formData: FormData) {
     destination(applicationId.data, "error", "Confirmez que les corrections saisies sont exactes.")
   }
   const { error } = await persistApplicationDossier(supabase, applicationId.data, content.resume.sourceResumeId, content)
-  if (error) destination(applicationId.data, "error", `La nouvelle version n’a pas pu être enregistrée : ${error.message}`)
+  if (error) destination(applicationId.data, "error", "La nouvelle version n’a pas pu être enregistrée.")
   revalidatePath("/dashboard")
   revalidatePath(`/dashboard/applications/${applicationId.data}`)
   destination(applicationId.data, "saved", "Nouvelle version enregistrée. Toute approbation antérieure est invalidée.")
@@ -75,7 +78,7 @@ export async function approveApplicationDossier(formData: FormData) {
     p_dossier_id: dossierId.data,
     p_expected_hash: contentHash.data,
   })
-  if (error) destination(applicationId.data, "error", `Approbation impossible : ${error.message}`)
+  if (error) destination(applicationId.data, "error", "Approbation impossible. Réessayez plus tard.")
   revalidatePath("/dashboard")
   revalidatePath(`/dashboard/applications/${applicationId.data}`)
   destination(applicationId.data, "approved", "Dossier approuvé et figé. Il n’est pas envoyé.")
@@ -93,7 +96,7 @@ export async function recordAssistedApplicationDecision(formData: FormData) {
     p_application_id: applicationId.data,
     p_decision: decision.data satisfies AssistedDecision,
   })
-  if (error) destination(applicationId.data, "error", `Déclaration impossible : ${error.message}`)
+  if (error) destination(applicationId.data, "error", "Déclaration impossible. Réessayez plus tard.")
 
   const messages: Record<AssistedDecision, string> = {
     sent: "Déclaration enregistrée : vous indiquez avoir envoyé la candidature. Aucune confirmation ATS n’a été créée.",

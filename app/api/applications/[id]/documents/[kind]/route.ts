@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { applicationDossierSchema } from "@/lib/applications/dossier-schema"
 import { generateCoverLetterPdf, generateResumePdf } from "@/lib/applications/pdf"
+import { takeSensitiveAction } from "@/lib/security/rate-limit"
 import { requireUser } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -11,6 +12,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (kind !== "resume" && kind !== "cover-letter") return NextResponse.json({ error: "Document inconnu." }, { status: 404 })
   const { supabase, user } = await requireUser()
   if (!user) return NextResponse.json({ error: "Authentification requise." }, { status: 401 })
+  const rateLimit = takeSensitiveAction("document_export", user.id)
+  if (!rateLimit.allowed) {
+    return NextResponse.json({ error: "Trop de téléchargements. Réessayez plus tard." }, {
+      status: 429,
+      headers: { "Cache-Control": "no-store", "Retry-After": String(rateLimit.retryAfterSeconds) },
+    })
+  }
 
   const { data, error } = await supabase.from("application_dossiers")
     .select("content,version")

@@ -1,5 +1,7 @@
 import { unstable_cache } from "next/cache"
 
+import { observeServerEvent } from "@/lib/observability/server"
+
 import { filterCatalogJobs } from "./filters"
 import { normalizeSourceJob, verifiedJob } from "./normalize"
 import { SlidingWindowLimit } from "./request-limit"
@@ -89,8 +91,10 @@ export type DynamicSearchResult = {
 }
 
 export async function searchAndCacheEasyJobs(userId: string, plan: EasyJobsSearchPlan): Promise<DynamicSearchResult> {
+  const startedAt = Date.now()
   const allowance = userLimit.take(userId)
   if (!allowance.allowed) {
+    observeServerEvent("jobs.search", { provider: "easyjobs", outcome: "rate_limited", retryAfterSeconds: allowance.retryAfterSeconds })
     return {
       jobs: [], pagination: null, unsupported: plan.unsupported,
       warning: `Trop de recherches rapprochées. Réessayez dans ${allowance.retryAfterSeconds} s.`,
@@ -130,6 +134,7 @@ export async function searchAndCacheEasyJobs(userId: string, plan: EasyJobsSearc
 
     const externalIds = verified.map((job) => job.externalId)
     if (!externalIds.length) {
+      observeServerEvent("jobs.search", { provider: "easyjobs", outcome: "succeeded", count: 0, durationMs: Date.now() - startedAt })
       return { jobs: [], pagination: response.pagination, warning: null, unsupported: plan.unsupported }
     }
     const { data, error } = await admin.from("job_listings")
@@ -139,19 +144,23 @@ export async function searchAndCacheEasyJobs(userId: string, plan: EasyJobsSearc
       .eq("is_active", true)
       .neq("application_mode", "closed_invalid")
     if (error) throw new Error(`Unable to read dynamic jobs: ${error.message}`)
+    const jobs = (data ?? []) as unknown as DynamicJobRow[]
+    observeServerEvent("jobs.search", { provider: "easyjobs", outcome: "succeeded", count: jobs.length, durationMs: Date.now() - startedAt })
     return {
-      jobs: (data ?? []) as unknown as DynamicJobRow[],
+      jobs,
       pagination: response.pagination,
       warning: null,
       unsupported: plan.unsupported,
     }
   } catch (error) {
     if (error instanceof EasyJobsHttpError && error.status === 429) {
+      observeServerEvent("jobs.search", { provider: "easyjobs", outcome: "rate_limited", status: 429, durationMs: Date.now() - startedAt })
       return {
         jobs: [], pagination: null, unsupported: plan.unsupported,
         warning: `EasyJobs limite temporairement les requêtes${error.retryAfterSeconds ? ` (${error.retryAfterSeconds} s)` : ""}. Les offres locales restent disponibles.`,
       }
     }
+    observeServerEvent("jobs.search", { provider: "easyjobs", outcome: "failed", errorCode: "PROVIDER_UNAVAILABLE", durationMs: Date.now() - startedAt })
     return {
       jobs: [], pagination: null, unsupported: plan.unsupported,
       warning: "EasyJobs est temporairement indisponible. Les offres locales restent disponibles.",
