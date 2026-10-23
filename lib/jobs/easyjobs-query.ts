@@ -33,7 +33,8 @@ export function isFreshEasyJobsOffer(postedAt: string, now = new Date(), maxAgeD
     && timestamp <= now.getTime() + 24 * 60 * 60 * 1000
 }
 
-export function withCandidateDefaults(filters: JobCatalogFilters, defaults: CandidateSearchDefaults): JobCatalogFilters {
+export function withCandidateDefaults(filters: JobCatalogFilters, defaults: CandidateSearchDefaults, applyDefaults = true): JobCatalogFilters {
+  if (!applyDefaults) return { ...filters }
   return {
     query: clean(filters.query) ?? clean(defaults.targetTitles?.[0]) ?? clean(defaults.currentTitle),
     location: clean(filters.location) ?? clean(defaults.cities?.[0]) ?? clean(defaults.countries?.[0]) ?? clean(defaults.location) ?? "France",

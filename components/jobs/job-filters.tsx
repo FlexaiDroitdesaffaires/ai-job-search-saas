@@ -12,6 +12,7 @@ export function JobFilters({ filters }: { filters: JobCatalogFilters }) {
     <details className="surface mt-7 p-5" open={Boolean(filters.query || filters.location || filters.employmentTypes.length || filters.workModes.length || filters.salaryMin || filters.seniority)}>
       <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold text-slate-900"><SlidersHorizontal className="size-4 text-indigo-600" />Filtrer les offres</summary>
       <form className="mt-5 grid gap-5 border-t border-slate-100 pt-5 md:grid-cols-2 xl:grid-cols-3" method="get">
+        <input name="filters" type="hidden" value="1" />
         <label className="space-y-2 text-sm font-medium text-slate-700"><span>Métier ou mot-clé</span><div className="relative"><Search className="absolute top-3 left-3 size-4 text-slate-400" /><input className="field pl-9" defaultValue={filters.query} name="q" placeholder="Comptable, infirmier, développeur…" /></div></label>
         <label className="space-y-2 text-sm font-medium text-slate-700"><span>Localisation</span><input className="field" defaultValue={filters.location} name="location" placeholder="Paris, Lyon, France…" /></label>
         <label className="space-y-2 text-sm font-medium text-slate-700"><span>Salaire minimum annuel</span><input className="field" defaultValue={filters.salaryMin} min="0" name="salaryMin" step="1000" type="number" /></label>

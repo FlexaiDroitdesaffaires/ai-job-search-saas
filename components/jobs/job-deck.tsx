@@ -30,6 +30,12 @@ export type DiscoverableJob = {
 }
 
 const SWIPE_THRESHOLD = 80
+const SWIPE_CONTROL_SELECTOR = "button,a,input,select,textarea"
+
+export function isInteractiveSwipeTarget(target: EventTarget | null) {
+  const candidate = target as { closest?: (selector: string) => unknown } | null
+  return typeof candidate?.closest === "function" && Boolean(candidate.closest(SWIPE_CONTROL_SELECTOR))
+}
 
 function salary(job: DiscoverableJob) {
   if (job.salary_min == null && job.salary_max == null) return "Salaire non communiqué"
@@ -76,7 +82,12 @@ export function JobDeck({ initialJobs, emptyMessage = "Aucune nouvelle offre dis
       {error && <p aria-live="assertive" className="mb-4 flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700"><CircleAlert className="mt-0.5 size-4 shrink-0" />{error}</p>}
       <article
         className="surface touch-pan-y overflow-hidden transition duration-300 ease-out"
-        onPointerDown={(event) => { if (!isPending) { startX.current = event.clientX; event.currentTarget.setPointerCapture(event.pointerId) } }}
+        onPointerDown={(event) => {
+          if (!isPending && !isInteractiveSwipeTarget(event.target)) {
+            startX.current = event.clientX
+            event.currentTarget.setPointerCapture(event.pointerId)
+          }
+        }}
         onPointerMove={(event) => { if (startX.current != null && !isPending) setDragX(Math.max(-140, Math.min(140, event.clientX - startX.current))) }}
         onPointerUp={(event) => {
           if (startX.current == null || isPending) return

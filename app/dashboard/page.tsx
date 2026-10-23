@@ -67,12 +67,12 @@ export default async function DashboardPage() {
       </section>
 
       <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.65fr)]">
-        <section className="surface p-5 sm:p-7">
+        <section className="surface min-w-0 p-5 sm:p-7">
           <div className="flex items-center justify-between gap-4"><div><p className="eyebrow">Pour vous</p><h2 className="mt-2 text-xl font-semibold tracking-tight">Offres recommandées</h2></div><Link className="text-sm font-semibold text-indigo-600 hover:text-indigo-700" href="/dashboard/jobs">Tout voir</Link></div>
           {recommendations.length ? <div className="mt-6 divide-y divide-slate-100">{recommendations.map(({ job, score }) => <div className="flex items-center gap-4 py-4 first:pt-0 last:pb-0" key={job.id}><div className="grid size-11 shrink-0 place-items-center rounded-xl bg-slate-100 font-semibold text-slate-600">{job.company.slice(0, 1).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{job.title}</p><p className="truncate text-sm text-slate-500">{repairUtf8Mojibake(job.company)}{job.location ? ` · ${job.location}` : ""}</p></div><span className="rounded-full bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700">{score}%</span></div>)}</div> : <EmptyMini text="Explorez les offres pour calculer vos recommandations explicables." />}
         </section>
 
-        <section className="overflow-hidden rounded-2xl bg-slate-950 p-6 text-white shadow-sm sm:p-7">
+        <section className="min-w-0 overflow-hidden rounded-2xl bg-slate-950 p-6 text-white shadow-sm sm:p-7">
           <span className="grid size-10 place-items-center rounded-xl bg-indigo-500"><Sparkles className="size-4" /></span>
           <p className="mt-6 text-xs font-semibold tracking-[0.12em] text-indigo-300 uppercase">Prochaine action</p>
           <h2 className="mt-2 text-xl font-semibold">{nextAction(rows)}</h2>

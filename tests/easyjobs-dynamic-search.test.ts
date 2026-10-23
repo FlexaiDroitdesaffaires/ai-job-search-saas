@@ -28,6 +28,30 @@ describe("dynamic EasyJobs search planning", () => {
     expect(plan.residualFilters).toMatchObject({ employmentTypes: [], workModes: [], salaryMin: undefined, seniority: undefined })
   })
 
+  it("preserves explicitly cleared filters instead of restoring candidate defaults", () => {
+    const filters = withCandidateDefaults({
+      query: "comptable",
+      location: "France",
+      employmentTypes: [],
+      workModes: [],
+      salaryMin: undefined,
+      seniority: undefined,
+    }, {
+      workModes: ["hybrid", "remote"],
+      salaryMin: 60_000,
+      seniority: ["senior"],
+    }, false)
+
+    expect(filters).toMatchObject({
+      query: "comptable",
+      location: "France",
+      employmentTypes: [],
+      workModes: [],
+      salaryMin: undefined,
+      seniority: undefined,
+    })
+  })
+
   it("keeps unsupported OR filters for bounded post-filtering", () => {
     const plan = buildEasyJobsSearchPlan({
       query: "chef de projet",

@@ -32,6 +32,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const { supabase, user } = await requireUser()
   if (!user) redirect("/login")
   const params = await searchParams
+  const filtersWereSubmitted = (Array.isArray(params.filters) ? params.filters[0] : params.filters) === "1"
   const salaryRaw = String(Array.isArray(params.salaryMin) ? params.salaryMin[0] ?? "" : params.salaryMin ?? "").trim()
   const salary = salaryRaw ? Number(salaryRaw) : Number.NaN
   const requestedFilters: JobCatalogFilters = {
@@ -66,7 +67,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     salaryMin: preferences?.salary_min,
     employmentTypes: preferences?.employment_types,
     seniority: preferences?.seniority,
-  })
+  }, !filtersWereSubmitted)
   const easyJobsPlan = buildEasyJobsSearchPlan(filters, page)
 
   const localJobsQuery = supabase.from("job_listings")
