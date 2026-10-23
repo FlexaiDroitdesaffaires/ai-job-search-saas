@@ -1,8 +1,14 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(34);
+select plan(40);
 
 select has_table('public', 'applications', 'applications existe');
+select has_table('public', 'pilot_rate_limits', 'compteurs distribués existent');
+select has_table('public', 'pilot_retention_config', 'configuration de conservation existe');
+select ok((select relrowsecurity from pg_class where oid = 'public.pilot_rate_limits'::regclass), 'RLS compteurs active');
+select ok((select relrowsecurity from pg_class where oid = 'public.pilot_retention_config'::regclass), 'RLS conservation active');
+select ok(to_regprocedure('public.consume_pilot_rate_limit(text,text)') is not null, 'consommation atomique existe');
+select ok(not has_function_privilege('authenticated', 'public.consume_pilot_rate_limit(text,text)', 'execute'), 'client ne consomme pas directement les quotas');
 select has_table('public', 'application_submissions', 'journal de soumission existe');
 select ok((select relrowsecurity from pg_class where oid = 'public.applications'::regclass), 'RLS applications active');
 select ok((select relrowsecurity from pg_class where oid = 'public.application_submissions'::regclass), 'RLS soumissions active');

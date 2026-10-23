@@ -4,7 +4,7 @@ import { observeServerEvent } from "@/lib/observability/server"
 
 import { filterCatalogJobs } from "./filters"
 import { normalizeSourceJob, verifiedJob } from "./normalize"
-import { SlidingWindowLimit } from "./request-limit"
+import { takeSensitiveAction } from "@/lib/security/rate-limit"
 import { fetchEasyJobs, EasyJobsHttpError, type EasyJobsSearchOptions } from "./sources/easyjobs"
 import { SupabaseJobListingRepository } from "./supabase-repository"
 import type { SourceJob } from "./types"
@@ -12,8 +12,6 @@ import { isFreshEasyJobsOffer, type EasyJobsSearchPlan } from "./easyjobs-query"
 import { createAdminClient } from "../supabase/admin"
 
 const CACHE_SECONDS = 300
-const userLimit = new SlidingWindowLimit(12, 60_000)
-const outboundLimit = new SlidingWindowLimit(50, 60_000)
 
 export const DYNAMIC_JOB_SELECT = "id,title,company,location,country,work_mode,employment_type,seniority,salary_min,salary_max,salary_currency,description,requirements,source_url,provider,posted_at,dedupe_key,application_mode,application_provider,application_reason"
 
@@ -49,13 +47,13 @@ function partnerCredentials() {
   return { partnerId, partnerKey }
 }
 
-function assertOutboundCapacity() {
-  const result = outboundLimit.take("easyjobs")
+async function assertOutboundCapacity() {
+  const result = await takeSensitiveAction("easyjobs_global", "provider")
   if (!result.allowed) throw new EasyJobsHttpError(429, result.retryAfterSeconds)
 }
 
 const fetchAnonymousCached = unstable_cache(async (serialized: string) => {
-  assertOutboundCapacity()
+  await assertOutboundCapacity()
   return fetchEasyJobs(JSON.parse(serialized) as EasyJobsSearchOptions)
 }, ["easyjobs-dynamic-search-v1"], { revalidate: CACHE_SECONDS })
 
@@ -64,7 +62,7 @@ async function searchProvider(options: EasyJobsSearchOptions): Promise<SearchPay
   if (credentials.partnerId && credentials.partnerKey) {
     // EasyJobs marks identified partner responses private/no-store. Never put
     // those personalized responses in the shared Next.js cache.
-    assertOutboundCapacity()
+    await assertOutboundCapacity()
     return fetchEasyJobs(options, fetch, credentials)
   }
   return fetchAnonymousCached(JSON.stringify(options))
@@ -92,7 +90,7 @@ export type DynamicSearchResult = {
 
 export async function searchAndCacheEasyJobs(userId: string, plan: EasyJobsSearchPlan): Promise<DynamicSearchResult> {
   const startedAt = Date.now()
-  const allowance = userLimit.take(userId)
+  const allowance = await takeSensitiveAction("easyjobs_user", userId)
   if (!allowance.allowed) {
     observeServerEvent("jobs.search", { provider: "easyjobs", outcome: "rate_limited", retryAfterSeconds: allowance.retryAfterSeconds })
     return {

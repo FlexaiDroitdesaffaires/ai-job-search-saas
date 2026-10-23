@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest"
 
 import { buildEasyJobsSearchPlan, isFreshEasyJobsOffer, parseEasyJobsPage, withCandidateDefaults } from "@/lib/jobs/easyjobs-query"
-import { SlidingWindowLimit } from "@/lib/jobs/request-limit"
 
 describe("dynamic EasyJobs search planning", () => {
   it("uses candidate defaults without widening the API page", () => {
@@ -76,15 +75,5 @@ describe("dynamic EasyJobs search planning", () => {
     expect(isFreshEasyJobsOffer("2026-09-22T11:59:59Z", now)).toBe(false)
     expect(isFreshEasyJobsOffer("2026-10-24T12:00:00Z", now)).toBe(true)
     expect(isFreshEasyJobsOffer("2026-10-24T12:00:01Z", now)).toBe(false)
-  })
-})
-
-describe("EasyJobs request limits", () => {
-  it("rejects excess requests and allows them after the window", () => {
-    const limit = new SlidingWindowLimit(2, 1_000)
-    expect(limit.take("candidate", 0).allowed).toBe(true)
-    expect(limit.take("candidate", 100).allowed).toBe(true)
-    expect(limit.take("candidate", 200)).toMatchObject({ allowed: false, retryAfterSeconds: 1 })
-    expect(limit.take("candidate", 1_101).allowed).toBe(true)
   })
 })

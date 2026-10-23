@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { BriefcaseBusiness, Compass, FileUser, LayoutDashboard, LogOut } from "lucide-react"
+import { BriefcaseBusiness, Compass, FileUser, LayoutDashboard, LogOut, UserRoundCog } from "lucide-react"
 
 import { signOut } from "@/app/auth/actions"
 import { Brand } from "@/components/brand"
@@ -9,6 +9,7 @@ const items = [
   { href: "/dashboard/jobs", label: "Découvrir", icon: Compass },
   { href: "/dashboard#applications", label: "Candidatures", icon: BriefcaseBusiness },
   { href: "/onboarding", label: "Mon profil", icon: FileUser },
+  { href: "/dashboard/account", label: "Mon compte", icon: UserRoundCog },
 ]
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -24,7 +25,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
       <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur lg:hidden"><Brand /><form action={signOut}><button aria-label="Se déconnecter" className="grid size-10 place-items-center rounded-xl border border-slate-200 text-slate-600"><LogOut className="size-4" /></button></form></header>
       <div className="pb-20 lg:ml-64 lg:pb-0">{children}</div>
-      <nav aria-label="Navigation mobile" className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-4 rounded-2xl border border-slate-200 bg-white/95 p-1.5 shadow-xl backdrop-blur lg:hidden">{items.map(({ href, label, icon: Icon }) => <Link className="flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium text-slate-500 hover:bg-indigo-50 hover:text-indigo-700" href={href} key={href}><Icon className="size-4.5" /><span className="truncate">{label}</span></Link>)}</nav>
+      <nav aria-label="Navigation mobile" className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-slate-200 bg-white/95 p-1.5 shadow-xl backdrop-blur lg:hidden">{items.map(({ href, label, icon: Icon }) => <Link className="flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium text-slate-500 hover:bg-indigo-50 hover:text-indigo-700" href={href} key={href}><Icon className="size-4.5" /><span className="truncate">{label}</span></Link>)}</nav>
     </div>
   )
 }

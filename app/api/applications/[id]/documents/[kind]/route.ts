@@ -12,7 +12,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (kind !== "resume" && kind !== "cover-letter") return NextResponse.json({ error: "Document inconnu." }, { status: 404 })
   const { supabase, user } = await requireUser()
   if (!user) return NextResponse.json({ error: "Authentification requise." }, { status: 401 })
-  const rateLimit = takeSensitiveAction("document_export", user.id)
+  const rateLimit = await takeSensitiveAction("document_export", user.id)
   if (!rateLimit.allowed) {
     return NextResponse.json({ error: "Trop de téléchargements. Réessayez plus tard." }, {
       status: 429,

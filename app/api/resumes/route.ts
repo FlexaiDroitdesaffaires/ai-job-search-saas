@@ -4,7 +4,9 @@ import { observeServerEvent } from "@/lib/observability/server"
 import { extractResumeText, DOCX_MIME, MAX_RESUME_BYTES, PDF_MIME, ResumeFileError } from "@/lib/resume/extract"
 import { parseResumeText } from "@/lib/resume/parser"
 import { editableResumeDataSchema } from "@/lib/resume/schema"
+import { getPilotRetentionConfig } from "@/lib/privacy/retention"
 import { takeSensitiveAction } from "@/lib/security/rate-limit"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { requireUser } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -18,10 +20,10 @@ export async function POST(request: Request) {
   const { supabase, user } = await requireUser()
   if (!user) return jsonError("Authentification requise.", 401)
 
-  const rateLimit = takeSensitiveAction("resume_upload", user.id)
+  const rateLimit = await takeSensitiveAction("resume_upload", user.id)
   if (!rateLimit.allowed) {
     observeServerEvent("resume.upload", { outcome: "rate_limited", retryAfterSeconds: rateLimit.retryAfterSeconds })
-    return jsonError("Trop de tentatives. Réessayez plus tard.", 429, { "Retry-After": String(rateLimit.retryAfterSeconds) })
+    return jsonError(rateLimit.unavailable ? "Protection temporairement indisponible." : "Trop de tentatives. Réessayez plus tard.", rateLimit.unavailable ? 503 : 429, { "Retry-After": String(rateLimit.retryAfterSeconds) })
   }
 
   const contentLength = Number(request.headers.get("content-length"))
@@ -35,6 +37,17 @@ export async function POST(request: Request) {
   if (!(file instanceof File)) return jsonError("Fichier CV requis.", 400)
   if (![PDF_MIME, DOCX_MIME].includes(file.type)) return jsonError("Formats acceptés : PDF ou DOCX.", 415)
   if (file.size < 1 || file.size > MAX_RESUME_BYTES) return jsonError("Le CV doit peser moins de 10 Mo.", 413)
+
+  try {
+    const config = await getPilotRetentionConfig(createAdminClient())
+    const { data: existing, error } = await supabase.from("resumes").select("file_size").eq("user_id", user.id)
+    if (error) throw error
+    const usedBytes = (existing ?? []).reduce((total, item) => total + (item.file_size ?? 0), 0)
+    if ((existing?.length ?? 0) >= config.max_resumes_per_user) return jsonError("Quota de CV atteint. Supprimez un ancien CV avant de continuer.", 409)
+    if (usedBytes + file.size > config.max_resume_bytes_per_user) return jsonError("Espace de stockage CV atteint.", 413)
+  } catch {
+    return jsonError("Contrôle de quota temporairement indisponible.", 503)
+  }
 
   const buffer = Buffer.from(await file.arrayBuffer())
   let parsedData
@@ -83,9 +96,9 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const { supabase, user } = await requireUser()
   if (!user) return jsonError("Authentification requise.", 401)
-  const rateLimit = takeSensitiveAction("resume_update", user.id)
+  const rateLimit = await takeSensitiveAction("resume_update", user.id)
   if (!rateLimit.allowed) {
-    return jsonError("Trop de tentatives. Réessayez plus tard.", 429, { "Retry-After": String(rateLimit.retryAfterSeconds) })
+    return jsonError(rateLimit.unavailable ? "Protection temporairement indisponible." : "Trop de tentatives. Réessayez plus tard.", rateLimit.unavailable ? 503 : 429, { "Retry-After": String(rateLimit.retryAfterSeconds) })
   }
   const body = await request.json().catch(() => null)
   const resumeId = typeof body?.resumeId === "string" ? body.resumeId : ""

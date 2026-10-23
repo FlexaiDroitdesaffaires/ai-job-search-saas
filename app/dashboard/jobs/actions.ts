@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { prepareApplicationDossierForUser } from "@/lib/applications/prepare-server"
+import { isJobFreshForApplication } from "@/lib/jobs/freshness"
 import { takeSensitiveAction } from "@/lib/security/rate-limit"
 import { requireUser } from "@/lib/supabase/server"
 
@@ -20,8 +21,12 @@ export async function decideJob(jobId: string, decision: "saved" | "skipped"): P
 
   const { supabase, user } = await requireUser()
   if (!user) return { ok: false, message: "Votre session a expiré. Reconnectez-vous." }
-  if (!takeSensitiveAction("job_decision", user.id).allowed) {
+  if (!(await takeSensitiveAction("job_decision", user.id)).allowed) {
     return { ok: false, message: "Trop de décisions rapprochées. Réessayez plus tard." }
+  }
+  if (decision === "saved") {
+    const { data: job } = await supabase.from("job_listings").select("provider,source_url,last_seen_at,expires_at,is_active").eq("id", jobId).maybeSingle()
+    if (!job || !(await isJobFreshForApplication(job))) return { ok: false, message: "Cette offre n’est plus disponible ou sa fraîcheur ne peut pas être confirmée." }
   }
 
   const { data, error } = await supabase.rpc("decide_job", {

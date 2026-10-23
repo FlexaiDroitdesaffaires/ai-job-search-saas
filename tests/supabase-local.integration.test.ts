@@ -11,6 +11,8 @@ import { dossierFingerprint } from "@/lib/applications/hash"
 import { applyUserEdits, prepareApplicationContent } from "@/lib/applications/preparation"
 import { prepareApplicationDossierForUser } from "@/lib/applications/prepare-server"
 import { DOCX_MIME, extractResumeText, PDF_MIME } from "@/lib/resume/extract"
+import { deleteAccountCompletely } from "@/lib/privacy/account-deletion"
+import { hashRateLimitSubject } from "@/lib/security/rate-limit"
 
 type LocalStatus = {
   API_URL: string
@@ -557,5 +559,56 @@ describe.runIf(enabled)("Supabase local integration", () => {
     expect(submissions.data?.[0]).toMatchObject({ method: "manual", state: "confirmed", provider: null, provider_submission_id: null, evidence: { confirmed_by_user: true } })
     expect((await service.from("application_events").select("id", { count: "exact", head: true }).eq("application_id", applicationId).eq("event_type", "official_form_opened")).count).toBe(1)
     expect((await service.from("application_events").select("id", { count: "exact", head: true }).eq("application_id", applicationId).eq("event_type", "assisted_application_not_sent")).count).toBe(1)
+  }, 120_000)
+
+  it("enforces distributed limits atomically without storing the raw subject", async () => {
+    const status = localStatus()
+    const service = client(status.API_URL, status.SERVICE_ROLE_KEY)
+    const rawSubject = randomUUID()
+    const subjectHash = hashRateLimitSubject("easyjobs_global", rawSubject)
+    cleanup.push(async () => { await service.from("pilot_rate_limits").delete().eq("action", "easyjobs_global").eq("subject_hash", subjectHash) })
+    const attempts = await Promise.all(Array.from({ length: 55 }, () => service.rpc("consume_pilot_rate_limit", { p_action: "easyjobs_global", p_subject_hash: subjectHash })))
+    expect(attempts.every((item) => item.error === null)).toBe(true)
+    expect(attempts.filter((item) => item.data.allowed).length).toBe(50)
+    const bucket = await service.from("pilot_rate_limits").select("subject_hash,attempt_count").eq("action", "easyjobs_global").eq("subject_hash", subjectHash).single()
+    expect(bucket.data).toEqual({ subject_hash: subjectHash, attempt_count: 55 })
+    expect(JSON.stringify(bucket.data)).not.toContain(rawSubject)
+  })
+
+  it("accepts an isolated invitation without sending email", async () => {
+    const status = localStatus()
+    const service = client(status.API_URL, status.SERVICE_ROLE_KEY)
+    const invited = client(status.API_URL, status.ANON_KEY)
+    const email = `invite-${randomUUID()}@example.test`
+    const generated = await service.auth.admin.generateLink({ type: "invite", email })
+    expect(generated.error).toBeNull()
+    const userId = generated.data.user?.id
+    expect(userId).toBeTruthy()
+    if (!userId) throw new Error("Local invitation did not create a user")
+    cleanup.push(() => deleteTestUser(service, userId))
+    const tokenHash = generated.data.properties?.hashed_token
+    expect(tokenHash).toBeTruthy()
+    const verified = await invited.auth.verifyOtp({ type: "invite", token_hash: tokenHash! })
+    expect(verified.error).toBeNull()
+    const password = `Invited-${randomUUID()}-42!`
+    expect((await invited.auth.updateUser({ password })).error).toBeNull()
+    expect((await invited.auth.signOut()).error).toBeNull()
+    expect((await invited.auth.signInWithPassword({ email, password })).data.user?.id).toBe(userId)
+  })
+
+  it("deletes an isolated account, private CV and cascaded application data", async () => {
+    const status = localStatus()
+    const userClient = client(status.API_URL, status.ANON_KEY)
+    const service = client(status.API_URL, status.SERVICE_ROLE_KEY)
+    const user = await signUpAndLogin(userClient, "delete-account")
+    const bytes = await pdfFixture()
+    const storagePath = `${user.id}/${randomUUID()}.pdf`
+    expect((await userClient.storage.from("resumes").upload(storagePath, bytes, { contentType: PDF_MIME })).error).toBeNull()
+    expect((await userClient.from("resumes").insert({ user_id: user.id, title: "Deletion fixture", storage_path: storagePath, file_name: "fixture.pdf", mime_type: PDF_MIME, file_size: bytes.length })).error).toBeNull()
+    expect((await userClient.from("career_experiences").insert({ user_id: user.id, title: "Deletion fixture", company: "Local only" })).error).toBeNull()
+    const result = await deleteAccountCompletely(service, user.id)
+    expect(result).toMatchObject({ verified: true, deletedFiles: 1 })
+    expect((await service.auth.admin.getUserById(user.id)).error).not.toBeNull()
+    expect((await service.from("career_experiences").select("id", { count: "exact", head: true }).eq("user_id", user.id)).count).toBe(0)
   }, 120_000)
 })

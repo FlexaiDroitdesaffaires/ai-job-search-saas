@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { formatServerEvent } from "@/lib/observability/server"
-import { sensitiveRateLimitProfiles, takeSensitiveAction } from "@/lib/security/rate-limit"
+import { hashRateLimitSubject, sensitiveRateLimitProfiles } from "@/lib/security/rate-limit"
 
 describe("HTTP security headers", () => {
   it("sets the production browser security baseline", async () => {
@@ -17,13 +17,12 @@ describe("HTTP security headers", () => {
 })
 
 describe("sensitive endpoint rate limits", () => {
-  it("returns a retry delay after the configured upload allowance", () => {
-    const key = `test-${crypto.randomUUID()}`
-    const profile = sensitiveRateLimitProfiles.resume_upload
-    for (let index = 0; index < profile.maximum; index += 1) {
-      expect(takeSensitiveAction("resume_upload", key, 1_000)).toEqual({ allowed: true })
-    }
-    expect(takeSensitiveAction("resume_upload", key, 1_000)).toEqual({ allowed: false, retryAfterSeconds: 600 })
+  it("hashes subjects before persistence and exposes the intended limits", () => {
+    const subject = "203.0.113.4"
+    const hash = hashRateLimitSubject("resume_upload", subject)
+    expect(hash).toMatch(/^[0-9a-f]{64}$/)
+    expect(hash).not.toContain(subject)
+    expect(sensitiveRateLimitProfiles).toMatchObject({ resume_upload: { maximum: 5 }, easyjobs_global: { maximum: 50 } })
   })
 })
 

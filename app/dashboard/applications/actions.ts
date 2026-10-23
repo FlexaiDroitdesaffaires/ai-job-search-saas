@@ -20,7 +20,7 @@ function destination(applicationId: string, key: "error" | "saved" | "approved" 
 async function authenticated() {
   const result = await requireUser()
   if (!result.user) redirect("/login")
-  const rateLimit = takeSensitiveAction("application_action", result.user.id)
+  const rateLimit = await takeSensitiveAction("application_action", result.user.id)
   if (!rateLimit.allowed) redirect("/dashboard?error=Trop%20de%20tentatives.%20R%C3%A9essayez%20plus%20tard.")
   return { supabase: result.supabase, user: result.user }
 }

@@ -88,3 +88,10 @@ coexister avec l’échec explicite de l’adaptateur. Un retour arrière doit
 d’abord arrêter les appels aux deux RPC ; la table et son historique doivent
 être exportés avant toute suppression. Rétablir l’ancien index sans traiter
 les candidatures ayant les deux traces peut échouer et n’est pas automatisé.
+
+La migration `20261027000000_closed_pilot_controls.sql` est additive : elle
+ajoute des compteurs distribués et une configuration de conservation sans
+modifier les données candidat. Un retour arrière exige d’abord d’arrêter tous
+les serveurs qui appellent les RPC, puis d’exporter les paramètres et compteurs.
+La suppression des fonctions et tables n’est pas automatisée afin d’éviter une
+désactivation silencieuse des protections anti-abus.

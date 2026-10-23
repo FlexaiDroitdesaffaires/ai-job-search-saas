@@ -1,6 +1,10 @@
-import { SlidingWindowLimit } from "@/lib/jobs/request-limit"
+import { createHash } from "node:crypto"
 
-export type SensitiveAction = "resume_upload" | "resume_update" | "document_export" | "official_form" | "application_action" | "job_decision"
+import { z } from "zod"
+
+import { createAdminClient } from "@/lib/supabase/admin"
+
+export type SensitiveAction = "resume_upload" | "resume_update" | "document_export" | "official_form" | "application_action" | "job_decision" | "easyjobs_user" | "easyjobs_global"
 
 export const sensitiveRateLimitProfiles: Record<SensitiveAction, { maximum: number; windowMs: number }> = {
   resume_upload: { maximum: 5, windowMs: 10 * 60_000 },
@@ -9,15 +13,36 @@ export const sensitiveRateLimitProfiles: Record<SensitiveAction, { maximum: numb
   official_form: { maximum: 10, windowMs: 5 * 60_000 },
   application_action: { maximum: 30, windowMs: 60_000 },
   job_decision: { maximum: 60, windowMs: 60_000 },
+  easyjobs_user: { maximum: 12, windowMs: 60_000 },
+  easyjobs_global: { maximum: 50, windowMs: 60_000 },
 }
 
-const limits = Object.fromEntries(
-  Object.entries(sensitiveRateLimitProfiles).map(([action, profile]) => [
-    action,
-    new SlidingWindowLimit(profile.maximum, profile.windowMs),
-  ]),
-) as Record<SensitiveAction, SlidingWindowLimit>
+const responseSchema = z.object({
+  allowed: z.boolean(),
+  remaining: z.number().int().nonnegative(),
+  retry_after_seconds: z.number().int().nonnegative(),
+})
 
-export function takeSensitiveAction(action: SensitiveAction, userId: string, now = Date.now()) {
-  return limits[action].take(userId, now)
+export type RateLimitResult =
+  | { allowed: true; remaining: number }
+  | { allowed: false; retryAfterSeconds: number; unavailable?: boolean }
+
+export function hashRateLimitSubject(action: SensitiveAction, subject: string) {
+  return createHash("sha256").update(`${action}:${subject}`).digest("hex")
+}
+
+export async function takeSensitiveAction(action: SensitiveAction, subject: string): Promise<RateLimitResult> {
+  try {
+    const { data, error } = await createAdminClient().rpc("consume_pilot_rate_limit", {
+      p_action: action,
+      p_subject_hash: hashRateLimitSubject(action, subject),
+    })
+    const parsed = responseSchema.safeParse(data)
+    if (error || !parsed.success) return { allowed: false, retryAfterSeconds: 60, unavailable: true }
+    return parsed.data.allowed
+      ? { allowed: true, remaining: parsed.data.remaining }
+      : { allowed: false, retryAfterSeconds: parsed.data.retry_after_seconds }
+  } catch {
+    return { allowed: false, retryAfterSeconds: 60, unavailable: true }
+  }
 }

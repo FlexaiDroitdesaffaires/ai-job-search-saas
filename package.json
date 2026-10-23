@@ -14,6 +14,7 @@
     "jobs:ingest:easyjobs:local": "tsx scripts/ingest-easyjobs.ts --local",
     "jobs:check:easyjobs": "tsx scripts/ingest-easyjobs.ts --dry-run",
     "submissions:worker:local": "tsx scripts/run-submission-worker.ts --local",
+    "pilot:purge:local": "tsx scripts/purge-pilot-data.ts --local",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
